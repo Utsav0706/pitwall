@@ -28,6 +28,8 @@ class Settings(BaseSettings):
     ollama_base_url: str = "http://127.0.0.1:11434"
     # Gearbox calls Pitwall's /route; Pitwall calls Gearbox for canary checks (M7).
     gearbox_url: str = "http://127.0.0.1:8002"
+    # Gearbox's checkout, for its offline replay CLI (pitwall compare); run in its own venv.
+    gearbox_dir: Path = Path("../gearbox")
     # Dyno's run store, for the promotion gate (M6).
     dyno_database_url: str = "sqlite:///dyno.db"
     # Windows reserves 8000; Scout uses 8001, Gearbox 8002.

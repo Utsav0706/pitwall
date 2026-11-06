@@ -220,3 +220,108 @@ def bundle_check(
         typer.echo(
             f"    {m.gguf.file} {m.gguf.quant} {m.gguf.bytes / 1e6:.0f} MB sha {m.gguf.sha256[:12]}"
         )
+
+
+@app.command()
+def evaluate(
+    directory: Annotated[Path, typer.Argument(help="Bundle folder, e.g. bundles/ft-train_old")],
+) -> None:
+    """Serve a bundle in Ollama on CPU; check it against training, score the test set,
+    measure latency, log to MLflow."""
+    from pitwall import bundle_eval, evaluation
+    from pitwall.config import load_config
+    from pitwall.ollama import OllamaRouter, create, model_name
+
+    try:
+        manifest = bundle_eval.load_checked(directory)
+    except ValueError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(1) from exc
+    settings = get_settings()
+    name = model_name(manifest.name)
+    typer.echo(f"loading {directory / 'model.gguf'} into Ollama as {name} (CPU)")
+    create(name, directory / "model.gguf")
+    router = OllamaRouter(settings.ollama_base_url, name)
+    router.answer("warm-up\n\nTier:")  # loads the model, so it isn't timed
+
+    def progress(i: int, n: int) -> None:
+        if i % 20 == 0 or i == n:
+            typer.echo(f"  {i}/{n}")
+
+    typer.echo("validation prompts from training (quantisation check):")
+    check = bundle_eval.validation_check(router, manifest, Path(manifest.train_file), progress)
+    threshold = float(manifest.chosen["threshold"])
+    typer.echo(f"test prompts, threshold {threshold}:")
+    test = data_mod.load_pairs(evaluation.TEST_FILE)
+    scored = bundle_eval.route(router, manifest.name, test, threshold, progress)
+    result = evaluation.score(manifest.name, scored.predictions, test)
+    latency = bundle_eval.latency_stats(scored.latencies)
+    result.metrics.update(latency)
+    result.metrics["no_answer"] = scored.no_answer
+    for side in ("trained", "gguf"):
+        for k in ("cost", "accuracy", "under_rate"):
+            result.metrics[f"val_{side}_{k}"] = check[side][k]
+    run_id = evaluation.log(
+        result,
+        "finetune",
+        bundle_eval.manifest_params(manifest),
+        {"bundle.json": manifest.model_dump(), "validation_check.json": check},
+        bundle_eval.manifest_tags(manifest),
+    )
+    limit = load_config().promotion.p95_ms_limit
+    typer.echo("")
+    typer.echo(metrics_table([(manifest.name, result.metrics)]))
+    typer.echo(
+        f"validation: trained cost {check['trained']['cost']} acc {check['trained']['accuracy']} "
+        f"picks {check['trained']['picks']} | GGUF cost {check['gguf']['cost']} "
+        f"acc {check['gguf']['accuracy']} picks {check['gguf']['picks']}"
+    )
+    typer.echo(
+        f"latency p50 {latency['latency_p50_ms']} ms, p95 {latency['latency_p95_ms']} ms "
+        f"(limit {limit} ms: {'ok' if latency['latency_p95_ms'] <= limit else 'OVER'}), "
+        f"max {latency['latency_max_ms']} ms; no_answer {scored.no_answer}"
+    )
+    typer.echo(f"mlflow run {run_id}")
+
+
+@app.command()
+def register(
+    directory: Annotated[Path, typer.Argument(help="Evaluated bundle folder")],
+) -> None:
+    """Add an evaluated bundle to the MLflow registry as a new pitwall-router version."""
+    from pitwall import bundle_eval, registry
+
+    try:
+        bundle_eval.load_checked(directory)
+        version, created = registry.register(directory)
+    except (ValueError, registry.RegistryError) as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(1) from exc
+    state = "registered" if created else "already registered"
+    typer.echo(f"{state}: {registry.REGISTERED_MODEL} version {version.version} ({directory.name})")
+
+
+@app.command()
+def compare(
+    out: Annotated[Path, typer.Option(help="Report file.")] = Path("reports/compare.md"),
+) -> None:
+    """Write the comparison of every router (routing metrics + Gearbox's cost replay)."""
+    import mlflow
+
+    from pitwall import compare as cmp
+
+    runs = cmp.latest_runs()
+    if not runs:
+        typer.echo("no runs yet", err=True)
+        raise typer.Exit(1)
+    ours = {}
+    for r in runs:
+        if r["tags"]["kind"] in ("baseline", "finetune"):
+            path = mlflow.artifacts.download_artifacts(
+                run_id=r["id"], artifact_path="predictions.jsonl"
+            )
+            ours[r["name"]] = Path(path).read_text(encoding="utf-8")
+    replay = cmp.gearbox_replay(get_settings().gearbox_dir, GEARBOX_PREDICTIONS, ours)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(cmp.render(runs, replay), encoding="utf-8", newline="\n")
+    typer.echo(f"wrote {out} ({len(runs)} routers, {len(replay)} replay rows)")

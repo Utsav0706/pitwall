@@ -15,6 +15,7 @@ dependencies = [
     "pydantic>=2.9",
     "pydantic-settings>=2.6",
     "pyyaml>=6.0",
+    "httpx>=0.28",  # Ollama client (M4) and the serving API (M5)
 ]
 
 [project.optional-dependencies]
