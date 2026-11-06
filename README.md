@@ -10,7 +10,7 @@ versions its data, trains it, tracks every run, gates it with
 One of four connected projects: [Scout](https://github.com/Utsav0706/scout) (research
 agent), Gearbox (LLM router), Dyno (agent evals) and Pitwall.
 
-**Status:** M1, data. No model results yet.
+**Status:** M2, baseline. The fine-tune comes next.
 
 ## Run
 
@@ -48,6 +48,39 @@ pitwall data show
 `dvc.lock` records the hash of every input and output; CI rebuilds the data from scratch
 and fails if any hash differs. The instruction text is versioned in `prompts/`
 (`pitwall prompts list` shows each template's hash).
+
+## Baseline and reference rows
+
+All on the same 119 test prompts. *Pass* = the picked tier really answered well (Gearbox's
+judge scored it >= 4); *under* = picked a smaller tier than needed (a bad answer); *over*
+= a bigger one (wasted money).
+
+| Router | Accuracy | Under | Over | Pass | Picks S/M/L |
+|---|---|---|---|---|---|
+| always-S | 43.7% | 56.3% | 0.0% | 32.8% | 119/0/0 |
+| always-M | 47.9% | 8.4% | 43.7% | 78.2% | 0/119/0 |
+| always-L | 8.4% | 0.0% | 91.6% | 84.0% | 0/0/119 |
+| Gearbox v1 rules | 45.4% | 42.9% | 11.8% | 45.4% | 87/30/2 |
+| Gearbox v2 LLM classifier (Haiku, paid) | 60.5% | 12.6% | 26.9% | 73.9% | 31/82/6 |
+| Gearbox v3 embedding + LR | 46.2% | 8.4% | 45.4% | 78.2% | 0/117/2 |
+| **LR on `train_old`** (Pitwall's first baseline) | 51.3% | 8.4% | 40.3% | 78.2% | 4/115/0 |
+| LR on `train_full` | 46.2% | 8.4% | 45.4% | 78.2% | 0/117/2 |
+
+The LR baseline is reimplemented, not imported from Gearbox; with Gearbox's settings it
+gives the same pick as Gearbox v3 on all 119 prompts. Both LRs are close to always-M:
+which tier a prompt needs is hard to predict from its text alone. That is the bar the
+fine-tuned model has to clear.
+
+```bash
+pip install -e ".[ops,baseline]"
+python scripts/mlflow_server.py        # MLflow UI at http://127.0.0.1:5000
+pitwall reference                       # always-S/M/L + Gearbox's stored predictions
+pitwall baseline --train train_old
+pitwall runs
+```
+
+Every run is tagged with the data version (DVC hash), the prompt template hash and the
+git commit.
 
 ## Build steps
 

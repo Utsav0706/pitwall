@@ -31,3 +31,6 @@ mlartifacts/
 .dvc/cache/
 .dvc/tmp/
 *.gguf
+
+# Embedding cache (pitwall baseline)
+.cache/

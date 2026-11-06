@@ -27,9 +27,17 @@ ops = [
     # Evidently 0.7.23 imports a pandas internal that pandas 3 removed (ImportError).
     "pandas>=2.2,<3",
 ]
+# pitwall baseline: local sentence embeddings + logistic regression. torch is large,
+# so it stays out of the core install.
+baseline = [
+    "sentence-transformers>=3.0",
+    "scikit-learn>=1.5",
+]
 dev = [
     "pytest>=8.3",
     "ruff>=0.8",
+    "scikit-learn>=1.5",  # baseline tests use a fake embedder, so no torch in CI
+    "mlflow>=3.0",  # tracking tests log to a temporary SQLite store
 ]
 
 [project.scripts]

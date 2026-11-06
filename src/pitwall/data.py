@@ -187,3 +187,13 @@ def table(manifest: dict[str, Any]) -> str:
             f"{f['sha256'][:12]}"
         )
     return "\n".join(lines)
+
+
+def load_pairs(path: Path) -> list[Pair]:
+    """Rows of a built pairs file (test.jsonl, train_old.jsonl, ...)."""
+    return [Pair.model_validate(row) for row in read_jsonl(path)]
+
+
+def prompt_text(pair: Pair) -> str:
+    """The user message as the model sees it (template applied, long prompts cut)."""
+    return next(m["content"] for m in pair.messages if m["role"] == "user")
