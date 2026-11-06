@@ -34,3 +34,7 @@ mlartifacts/
 
 # Embedding cache (pitwall baseline)
 .cache/
+
+# Model bundles and llama.cpp tools (big; the bundle manifest records their hashes)
+bundles/
+.llama.cpp/

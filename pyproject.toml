@@ -56,6 +56,11 @@ src = ["src", "tests"]
 # B: likely bugs, SIM: simplifications.
 select = ["E", "F", "I", "UP", "B", "SIM"]
 
+[tool.ruff.lint.per-file-ignores]
+# Notebooks run in IPython: `_exit_code` is set by each `!` shell line, shell lines can't
+# be wrapped like Python, and imports follow the shell steps they depend on.
+"notebooks/*.ipynb" = ["F821", "E501", "E402"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"

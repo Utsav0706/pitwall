@@ -190,3 +190,33 @@ def metrics_table(rows: list[tuple[str, dict]]) -> str:
     from pitwall.metrics import table
 
     return table(rows)
+
+
+bundle_app = typer.Typer(help="Model bundles made by a training run.")
+app.add_typer(bundle_app, name="bundle")
+
+
+@bundle_app.command("check")
+def bundle_check(
+    directory: Annotated[Path, typer.Argument(help="Bundle folder, e.g. bundles/ft-train_old")],
+) -> None:
+    """Check a bundle is complete and intact (manifest, adapter, GGUF hash)."""
+    from pitwall.finetune import bundle
+
+    problems = bundle.check(directory)
+    if problems:
+        for p in problems:
+            typer.echo(f"-- {p}")
+        raise typer.Exit(1)
+    m = bundle.load_manifest(directory)
+    chosen = m.chosen
+    typer.echo(f"ok  {m.name}: {m.base_model}, {m.examples} examples, data {m.data_version[:8]}")
+    typer.echo(
+        f"    chosen on {m.validation_examples} validation prompts: {chosen['epoch']} epochs, "
+        f"threshold {chosen['threshold']}, cost {chosen['cost']}, accuracy {chosen['accuracy']}, "
+        f"under {chosen['under_rate']}, picks {chosen['picks']}"
+    )
+    if m.gguf:
+        typer.echo(
+            f"    {m.gguf.file} {m.gguf.quant} {m.gguf.bytes / 1e6:.0f} MB sha {m.gguf.sha256[:12]}"
+        )

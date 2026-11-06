@@ -1,0 +1,11 @@
+# Training dependencies for Colab (or any CUDA machine). torch is NOT listed: Colab
+# ships a torch built for its own CUDA, and replacing it breaks the GPU. The version
+# that ran is recorded in bundle.json. Pins: newest releases at least two weeks old
+# when chosen (2026-11-06).
+transformers==5.20.2
+peft==0.21.2
+accelerate==1.15.0
+dvc==3.67.1
+# llama.cpp's GGUF converter imports it for Qwen tokenizers. (Its own requirements file
+# pins torch 2.11 and transformers 4.x; installing that would replace Colab's GPU torch.)
+sentencepiece==0.2.2
