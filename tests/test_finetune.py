@@ -68,15 +68,18 @@ def test_split_changes_with_seed() -> None:
 # --- loss mask -------------------------------------------------------------------------
 
 
-def test_only_the_answer_is_learned() -> None:
-    ids, labels = core.build_example([5, 6, 7], [99], max_len=10)
-    assert ids == [5, 6, 7, 99]
-    assert labels == [core.IGNORE, core.IGNORE, core.IGNORE, 99]
+def test_example_is_prompt_and_one_answer_token() -> None:
+    assert core.make_example([5, 6, 7], [99], max_len=10) == ([5, 6, 7], 99)
+
+
+def test_answer_must_be_one_token() -> None:
+    with pytest.raises(ValueError, match="must be one"):
+        core.make_example([5], [1, 2], max_len=10)
 
 
 def test_too_long_example_is_an_error() -> None:
     with pytest.raises(ValueError, match="over max_len"):
-        core.build_example(list(range(10)), [1], max_len=10)
+        core.make_example(list(range(10)), [1], max_len=10)
 
 
 # --- choosing epochs and threshold -----------------------------------------------------------

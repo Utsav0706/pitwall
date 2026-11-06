@@ -2,9 +2,9 @@
 
 - validation_split: stratified by label and seeded, so every run holds out the same
   prompts and the rare L examples are on both sides.
-- build_example: the loss mask. Only the answer token is learned; the prompt is context.
-  A request longer than max_len is an error, not silently cut: the cut already happened,
-  visibly, in the data build (max_prompt_chars).
+- make_example: (prompt ids, answer id). Only the answer token is learned, at the one
+  position after "Tier:"; the prompt is context. A request longer than max_len is an
+  error, not silently cut: the cut already happened, visibly, in the data build.
 - choose: epochs and threshold picked on validation by routing cost, the same objective
   and threshold grid as the LR baseline, so the two are tuned the same way.
 """
@@ -21,8 +21,6 @@ import numpy as np
 from pitwall.baseline import GRID, decide, routing_cost
 from pitwall.data import Pair
 from pitwall.metrics import TIERS
-
-IGNORE = -100  # label value PyTorch's cross-entropy skips
 
 
 def validation_split(
@@ -46,15 +44,15 @@ def validation_split(
     return sorted(train, key=lambda p: p.id), sorted(val, key=lambda p: p.id)
 
 
-def build_example(
+def make_example(
     prompt_ids: list[int], answer_ids: list[int], max_len: int
-) -> tuple[list[int], list[int]]:
-    """(input_ids, labels): labels are IGNORE on the prompt, the answer ids on the answer."""
-    if len(prompt_ids) + len(answer_ids) > max_len:
-        raise ValueError(
-            f"example is {len(prompt_ids) + len(answer_ids)} tokens, over max_len {max_len}"
-        )
-    return prompt_ids + answer_ids, [IGNORE] * len(prompt_ids) + answer_ids
+) -> tuple[list[int], int]:
+    """(prompt ids, answer id); the answer must be exactly one token."""
+    if len(answer_ids) != 1:
+        raise ValueError(f"answer is {len(answer_ids)} tokens; it must be one")
+    if len(prompt_ids) + 1 > max_len:
+        raise ValueError(f"example is {len(prompt_ids) + 1} tokens, over max_len {max_len}")
+    return prompt_ids, answer_ids[0]
 
 
 @dataclass

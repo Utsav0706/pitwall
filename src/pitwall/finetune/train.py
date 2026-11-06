@@ -136,32 +136,45 @@ def add_lora(model: Any, args: argparse.Namespace) -> Any:
     return get_peft_model(model, config)
 
 
-def encode(pairs: list[Pair], tok: Any, max_len: int) -> list[tuple[list[int], list[int]]]:
+def encode(pairs: list[Pair], tok: Any, max_len: int) -> list[tuple[list[int], int]]:
+    """(prompt ids, answer id) per pair."""
     examples = []
     for pair in pairs:
         prompt, answer = render_pair(pair)
         prompt_ids = tok.encode(prompt, add_special_tokens=False)
         answer_tok = tok.encode(answer, add_special_tokens=False)
-        examples.append(core.build_example(prompt_ids, answer_tok, max_len))
+        examples.append(core.make_example(prompt_ids, answer_tok, max_len))
     return examples
 
 
-def batches(
-    examples: list[tuple[list[int], list[int]]], size: int, pad_id: int, device: str
-) -> Any:
+def batches(prompts: list[list[int]], size: int, pad_id: int, device: str) -> Any:
+    """(input_ids, attention_mask, index of each prompt's last token), right-padded."""
     import torch
 
-    for start in range(0, len(examples), size):
-        chunk = examples[start : start + size]
-        width = max(len(ids) for ids, _ in chunk)
-        ids = [x + [pad_id] * (width - len(x)) for x, _ in chunk]
-        labels = [y + [core.IGNORE] * (width - len(y)) for _, y in chunk]
-        mask = [[1] * len(x) + [0] * (width - len(x)) for x, _ in chunk]
+    for start in range(0, len(prompts), size):
+        chunk = prompts[start : start + size]
+        width = max(len(x) for x in chunk)
         yield (
-            torch.tensor(ids, device=device),
-            torch.tensor(labels, device=device),
-            torch.tensor(mask, device=device),
+            torch.tensor([x + [pad_id] * (width - len(x)) for x in chunk], device=device),
+            torch.tensor([[1] * len(x) + [0] * (width - len(x)) for x in chunk], device=device),
+            torch.tensor([len(x) - 1 for x in chunk], device=device),
         )
+
+
+def next_token_logits(model: Any, input_ids: Any, mask: Any, last: Any) -> Any:
+    """Vocabulary scores at ONE position per prompt: right after "Tier:".
+
+    The usual causal-LM forward scores every position (batch x length x 152k vocab):
+    ~4 GB at batch 8 and ~900 tokens, which ran a T4 out of memory, all for positions
+    whose loss is masked anyway. So run the transformer body, take the hidden state at
+    the last prompt token, and apply the output layer there only. Same numbers, a few MB.
+    """
+    import torch
+
+    base = model.get_base_model() if hasattr(model, "get_base_model") else model
+    hidden = base.model(input_ids=input_ids, attention_mask=mask).last_hidden_state
+    picked = hidden[torch.arange(hidden.shape[0], device=hidden.device), last]
+    return base.lm_head(picked)  # (batch, vocab)
 
 
 # --- training and validation --------------------------------------------------------------
@@ -169,14 +182,15 @@ def batches(
 
 def train_epochs(
     model: Any,
-    examples: list[tuple[list[int], list[int]]],
+    examples: list[tuple[list[int], int]],
     args: argparse.Namespace,
     epochs: int,
     pad_id: int,
     device: str,
     after_epoch: Any = None,
 ) -> list[float]:
-    """Train for `epochs`; returns the mean loss of each epoch."""
+    """Train for `epochs`; returns the mean loss of each epoch. The loss is cross-entropy
+    of the answer token over the whole vocabulary, at the position after "Tier:" only."""
     import torch
 
     params = [p for p in model.parameters() if p.requires_grad]
@@ -195,9 +209,13 @@ def train_epochs(
         order = examples[:]
         rng.shuffle(order)
         total, count = 0.0, 0
-        for ids, labels, mask in batches(order, args.batch, pad_id, device):
+        for start in range(0, len(order), args.batch):
+            chunk = order[start : start + args.batch]
+            input_ids, mask, last = next(batches([x for x, _ in chunk], len(chunk), pad_id, device))
+            target = torch.tensor([y for _, y in chunk], device=device)
             with torch.autocast(device_type="cuda", dtype=torch.float16, enabled=use_amp):
-                loss = model(input_ids=ids, attention_mask=mask, labels=labels).loss
+                logits = next_token_logits(model, input_ids, mask, last)
+            loss = torch.nn.functional.cross_entropy(logits.float(), target)
             scaler.scale(loss).backward()
             scaler.unscale_(optimizer)
             torch.nn.utils.clip_grad_norm_(params, 1.0)
@@ -205,8 +223,8 @@ def train_epochs(
             scaler.update()
             optimizer.zero_grad(set_to_none=True)
             schedule.step()
-            total += float(loss) * len(ids)
-            count += len(ids)
+            total += float(loss) * len(chunk)
+            count += len(chunk)
         losses.append(total / count)
         print(f"epoch {epoch}: train loss {losses[-1]:.4f}", flush=True)
         if after_epoch is not None:
@@ -224,20 +242,12 @@ def answer_probs(
     prompts = [tok.encode(render_pair(p)[0], add_special_tokens=False) for p in pairs]
     answer_cols = [ids[t] for t in TIERS]
     out = []
+    use_amp = device == "cuda"
     with torch.no_grad():
-        for start in range(0, len(prompts), batch):
-            chunk = prompts[start : start + batch]
-            width = max(len(x) for x in chunk)
-            input_ids = torch.tensor(
-                [x + [tok.pad_token_id] * (width - len(x)) for x in chunk], device=device
-            )
-            mask = torch.tensor(
-                [[1] * len(x) + [0] * (width - len(x)) for x in chunk], device=device
-            )
-            logits = model(input_ids=input_ids, attention_mask=mask).logits
-            last = torch.tensor([len(x) - 1 for x in chunk], device=device)
-            rows = logits[torch.arange(len(chunk), device=device), last][:, answer_cols]
-            out.append(rows.float().cpu().numpy())
+        for input_ids, mask, last in batches(prompts, batch, tok.pad_token_id, device):
+            with torch.autocast(device_type="cuda", dtype=torch.float16, enabled=use_amp):
+                logits = next_token_logits(model, input_ids, mask, last)
+            out.append(logits[:, answer_cols].float().cpu().numpy())
     return core.renormalise(np.concatenate(out))
 
 
