@@ -82,6 +82,22 @@ def test_too_long_example_is_an_error() -> None:
         core.make_example(list(range(10)), [1], max_len=10)
 
 
+def test_length_batches_group_similar_lengths() -> None:
+    lengths = [900, 10, 12, 880, 11, 905]
+    groups = core.length_batches(lengths, 3)
+    assert groups == [[1, 4, 2], [3, 0, 5]]  # short ones together, long ones together
+    assert sorted(i for g in groups for i in g) == list(range(6))
+
+
+def test_length_batches_shuffle_batch_order_only() -> None:
+    import random
+
+    lengths = list(range(40))
+    groups = core.length_batches(lengths, 4, random.Random(3))
+    assert sorted(map(tuple, groups)) == sorted(map(tuple, core.length_batches(lengths, 4)))
+    assert groups != core.length_batches(lengths, 4)
+
+
 # --- choosing epochs and threshold -----------------------------------------------------------
 
 

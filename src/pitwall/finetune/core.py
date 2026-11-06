@@ -55,6 +55,20 @@ def make_example(
     return prompt_ids, answer_ids[0]
 
 
+def length_batches(
+    lengths: list[int], size: int, rng: random.Random | None = None
+) -> list[list[int]]:
+    """Indices grouped into batches of similar length, so short prompts aren't padded to
+    the longest one in a random batch (padding costs GPU memory and time). With rng, the
+    order of the batches is shuffled (training); without, it is shortest first (scoring).
+    """
+    order = sorted(range(len(lengths)), key=lambda i: (lengths[i], i))
+    groups = [order[i : i + size] for i in range(0, len(order), size)]
+    if rng is not None:
+        rng.shuffle(groups)
+    return groups
+
+
 @dataclass
 class EpochResult:
     epoch: int

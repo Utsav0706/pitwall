@@ -133,7 +133,14 @@ def add_lora(model: Any, args: argparse.Namespace) -> Any:
         target_modules=TARGET_MODULES,
         task_type="CAUSAL_LM",
     )
-    return get_peft_model(model, config)
+    model = get_peft_model(model, config)
+    # Gradient checkpointing: keep each layer's input only and recompute the rest during
+    # the backward pass. Without it, activations for 8 prompts x ~900 tokens x 28 layers
+    # filled a 15 GB T4 (second Colab run). Costs ~30% more time on a run of minutes.
+    # Non-reentrant mode works with LoRA's frozen base without extra hooks.
+    model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
+    model.config.use_cache = False
+    return model
 
 
 def encode(pairs: list[Pair], tok: Any, max_len: int) -> list[tuple[list[int], int]]:
@@ -206,11 +213,9 @@ def train_epochs(
     losses = []
     for epoch in range(1, epochs + 1):
         model.train()
-        order = examples[:]
-        rng.shuffle(order)
         total, count = 0.0, 0
-        for start in range(0, len(order), args.batch):
-            chunk = order[start : start + args.batch]
+        for idx in core.length_batches([len(x) for x, _ in examples], args.batch, rng):
+            chunk = [examples[i] for i in idx]
             input_ids, mask, last = next(batches([x for x, _ in chunk], len(chunk), pad_id, device))
             target = torch.tensor([y for _, y in chunk], device=device)
             with torch.autocast(device_type="cuda", dtype=torch.float16, enabled=use_amp):
@@ -223,7 +228,7 @@ def train_epochs(
             scaler.update()
             optimizer.zero_grad(set_to_none=True)
             schedule.step()
-            total += float(loss) * len(chunk)
+            total += float(loss.detach()) * len(chunk)
             count += len(chunk)
         losses.append(total / count)
         print(f"epoch {epoch}: train loss {losses[-1]:.4f}", flush=True)
@@ -244,11 +249,17 @@ def answer_probs(
     out = []
     use_amp = device == "cuda"
     with torch.no_grad():
-        for input_ids, mask, last in batches(prompts, batch, tok.pad_token_id, device):
+        order = [i for idx in core.length_batches([len(x) for x in prompts], batch) for i in idx]
+        for input_ids, mask, last in batches(
+            [prompts[i] for i in order], batch, tok.pad_token_id, device
+        ):
             with torch.autocast(device_type="cuda", dtype=torch.float16, enabled=use_amp):
                 logits = next_token_logits(model, input_ids, mask, last)
             out.append(logits[:, answer_cols].float().cpu().numpy())
-    return core.renormalise(np.concatenate(out))
+    sorted_logits = np.concatenate(out)
+    logits_in_order = np.empty_like(sorted_logits)
+    logits_in_order[order] = sorted_logits
+    return core.renormalise(logits_in_order)
 
 
 # --- export --------------------------------------------------------------------------------
@@ -294,6 +305,10 @@ def library_versions() -> dict[str, str]:
 
 
 def main(argv: list[str]) -> int:
+    import os
+
+    # Fewer "reserved but unallocated" gaps in GPU memory; must be set before CUDA starts.
+    os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
     import torch
 
     args = parse_args(argv)
@@ -395,6 +410,9 @@ def main(argv: list[str]) -> int:
             "epochs_searched": args.epochs,
             "final_epoch_losses": [round(x, 5) for x in losses],
             "seconds": seconds,
+            "peak_gpu_gb": round(torch.cuda.max_memory_allocated() / 1e9, 2)
+            if device == "cuda"
+            else None,
             "device": torch.cuda.get_device_name(0) if device == "cuda" else "cpu",
             "precision": "fp32 weights + fp16 autocast" if device == "cuda" else "fp32",
         },
