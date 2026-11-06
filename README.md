@@ -10,7 +10,7 @@ versions its data, trains it, tracks every run, gates it with
 One of four connected projects: [Scout](https://github.com/Utsav0706/scout) (research
 agent), Gearbox (LLM router), Dyno (agent evals) and Pitwall.
 
-**Status:** M3, first fine-tune trained. Test-set evaluation comes next (M4).
+**Status:** M4, first fine-tune evaluated and registered. Serving API next (M5).
 
 ## Run
 
@@ -113,6 +113,36 @@ test-set numbers, on the quantised model, come in M4.
 
 `python -m pitwall.finetune.train --smoke ...` runs the whole script (training, choice,
 export, bundle) on a tiny random model on CPU in seconds.
+
+## Result so far
+
+On the 119 test prompts, served as Q4 GGUF by Ollama on CPU
+([`reports/compare.md`](reports/compare.md)):
+
+| Router | Accuracy | Under | Pass | Quality vs always-L | Cost vs always-L | Routing p50 / p95 |
+|---|---|---|---|---|---|---|
+| always-M (Haiku) | 47.9% | 8.4% | 78.2% | 94.7% | 6.0% | - |
+| Gearbox v2 LLM classifier (paid) | 60.5% | 12.6% | 73.9% | 90.6% | 19.5% | 1952 / 4712 ms |
+| Gearbox v3 embedding + LR | 46.2% | 8.4% | 78.2% | 94.7% | 7.1% | 36 / 125 ms |
+| LR on `train_old` | 51.3% | 8.4% | 78.2% | 94.7% | 5.9% | - |
+| **Fine-tuned Qwen3-0.6B (`ft-train_old`)** | 47.9% | 8.4% | 78.2% | 94.7% | 6.0% | 108 / 488 ms |
+
+The honest reading: **the fine-tune learned the label mix, not the prompts.** Its P(S)
+stays between 0.23 and 0.33 for every test prompt, with the same average whatever the
+right tier is, so the threshold sends everything to M: it *is* always-M. That matches the
+LR and Gearbox's own finding that which tier a prompt needs is barely predictable from
+its text. It does replace the paid classifier (v2) at better quality and ~£0 per request,
+but not beat a free, simpler rule. The quantised model gives exactly the validation
+numbers recorded in training, so this is the model, not the Q4 export.
+
+Latency grows with prompt length on CPU: ~60 ms for short prompts, a median of 315 ms
+for prompts over ~350 characters, 1.5 s for the longest.
+
+```bash
+pitwall evaluate bundles/ft-train_old   # Ollama on CPU: validation check, test, latency
+pitwall register bundles/ft-train_old   # pitwall-router version in the MLflow registry
+pitwall compare                          # reports/compare.md (Gearbox's replay for cost)
+```
 
 ## Build steps
 
