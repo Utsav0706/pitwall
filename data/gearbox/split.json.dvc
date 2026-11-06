@@ -1,0 +1,13 @@
+md5: 538f8c9dcdb21e1375fa95749762cd32
+frozen: true
+deps:
+- checksum: '"438ba82f02ae17494c476d07728f23ec0715f82e9919f549db1b20d99e1f43ce"'
+  size: 12563
+  hash: md5
+  path: 
+    https://raw.githubusercontent.com/Utsav0706/gearbox/890e275066c7f9520cbbcb223fb867e9923bac0e/data/v2/split.json
+outs:
+- md5: 1726921b45f9fa7a2dd61355e27eaa7b
+  size: 12563
+  hash: md5
+  path: split.json

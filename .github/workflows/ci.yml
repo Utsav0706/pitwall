@@ -33,3 +33,29 @@ jobs:
 
       - name: Test
         run: pytest
+
+  # Anyone can rebuild the exact training data: fetch Gearbox's files from the pinned
+  # commit, rebuild, and fail if any hash differs from the committed dvc.lock.
+  data:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install
+        run: pip install -e . "dvc>=3.50"
+
+      - name: Fetch Gearbox's files (pinned commit)
+        # No DVC remote: `dvc pull` can't fetch imports from their source, `dvc update` can.
+        run: dvc update -R data/gearbox
+
+      - name: Rebuild and compare
+        run: |
+          dvc repro
+          dvc status
+          git diff --exit-code
+          pitwall data show

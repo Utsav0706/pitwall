@@ -1,0 +1,15 @@
+# `dvc repro` rebuilds data/derived/ only when an input below changed; dvc.lock records
+# the hash of every input and output, so a run can always say which data it used.
+stages:
+  pairs:
+    cmd: pitwall data build
+    deps:
+      - data/gearbox/prompts.jsonl
+      - data/gearbox/labels.jsonl
+      - data/gearbox/split.json
+      - data/gearbox/manifest.json
+      - prompts/router_v1.yaml
+      - src/pitwall/data.py
+      - src/pitwall/prompts.py
+    outs:
+      - data/derived

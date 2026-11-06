@@ -1,0 +1,39 @@
+schema: '2.0'
+stages:
+  pairs:
+    cmd: pitwall data build
+    deps:
+    - path: data/gearbox/labels.jsonl
+      hash: md5
+      md5: 51c628fd8b5c440358ada779d55b11c1
+      size: 64197
+    - path: data/gearbox/manifest.json
+      hash: md5
+      md5: baf93689102f9e77fafab171a9af3dab
+      size: 4611
+    - path: data/gearbox/prompts.jsonl
+      hash: md5
+      md5: 36e78f60baac0e8ac4a3f9aa471adffd
+      size: 472997
+    - path: data/gearbox/split.json
+      hash: md5
+      md5: 1726921b45f9fa7a2dd61355e27eaa7b
+      size: 12563
+    - path: prompts/router_v1.yaml
+      hash: md5
+      md5: b1fbd5dff258e56000b1f5891188fe53
+      size: 791
+    - path: src/pitwall/data.py
+      hash: md5
+      md5: b2f4ca76bcfa86441620b3f688e667bb
+      size: 7347
+    - path: src/pitwall/prompts.py
+      hash: md5
+      md5: 3eb32e0347881f5a0bac29b39ef90586
+      size: 2303
+    outs:
+    - path: data/derived
+      hash: md5
+      md5: 709cd348e6c2d69c184bb74d5a168b70.dir
+      size: 825516
+      nfiles: 5

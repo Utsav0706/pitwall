@@ -1,0 +1,3 @@
+# LF everywhere, on Windows too. DVC 3 hashes raw bytes, so a CRLF checkout on Windows
+# would give different hashes from Linux CI and make `dvc repro` think every stage changed.
+* text=auto eol=lf

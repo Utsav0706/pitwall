@@ -10,7 +10,7 @@ versions its data, trains it, tracks every run, gates it with
 One of four connected projects: [Scout](https://github.com/Utsav0706/scout) (research
 agent), Gearbox (LLM router), Dyno (agent evals) and Pitwall.
 
-**Status:** M0, skeleton. No results yet.
+**Status:** M1, data. No model results yet.
 
 ## Run
 
@@ -24,6 +24,30 @@ pitwall doctor
 
 `pitwall doctor` checks the operations tools (`pip install -e ".[ops]"`) and the local
 MLflow and Ollama servers that later steps use.
+
+## Data
+
+Gearbox's labelled prompts (prompt -> cheapest tier that answered well), imported with
+DVC from a pinned Gearbox commit, then turned into chat-format pairs whose answer is the
+tier:
+
+```bash
+pip install -e ".[ops]"
+dvc update -R data/gearbox
+dvc repro
+pitwall data show
+```
+
+| File | Rows | S | M | L | What it is |
+|---|---|---|---|---|---|
+| `test` | 119 | 52 | 57 | 10 | Gearbox's test split; the same for every model |
+| `train_old` | 365 | 172 | 180 | 13 | general prompts: the first model learns these |
+| `pool_new` | 116 | 37 | 50 | 29 | SimpleQA, AIME, MMLU-Pro: the "new traffic" for the drift demo |
+| `train_full` | 481 | 209 | 230 | 42 | old + new: what a retrained model learns |
+
+`dvc.lock` records the hash of every input and output; CI rebuilds the data from scratch
+and fails if any hash differs. The instruction text is versioned in `prompts/`
+(`pitwall prompts list` shows each template's hash).
 
 ## Build steps
 

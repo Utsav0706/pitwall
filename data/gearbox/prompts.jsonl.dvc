@@ -1,0 +1,13 @@
+md5: eba679bfc1483de1b2ccc315b0e6ff21
+frozen: true
+deps:
+- checksum: '"fe268e552352ac59f1482982e62c0eb6ed2556eba70e55392b61dbf8751840f1"'
+  size: 472997
+  hash: md5
+  path: 
+    https://raw.githubusercontent.com/Utsav0706/gearbox/890e275066c7f9520cbbcb223fb867e9923bac0e/data/v2/prompts.jsonl
+outs:
+- md5: 36e78f60baac0e8ac4a3f9aa471adffd
+  size: 472997
+  hash: md5
+  path: prompts.jsonl

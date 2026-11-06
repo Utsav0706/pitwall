@@ -1,0 +1,13 @@
+md5: 005349c3e8cbbeefa4d9119efed30522
+frozen: true
+deps:
+- checksum: '"553d675f98c9e249fed5f9d8d741a38b7e7441744ff3d9b9a7078f9310544fc0"'
+  size: 4611
+  hash: md5
+  path: 
+    https://raw.githubusercontent.com/Utsav0706/gearbox/890e275066c7f9520cbbcb223fb867e9923bac0e/data/v2/manifest.json
+outs:
+- md5: baf93689102f9e77fafab171a9af3dab
+  size: 4611
+  hash: md5
+  path: manifest.json

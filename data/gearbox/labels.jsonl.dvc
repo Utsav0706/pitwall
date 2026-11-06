@@ -1,0 +1,13 @@
+md5: 861eb84e2ed6d99e09dc3edb7bc64831
+frozen: true
+deps:
+- checksum: '"f7857d079f17e885194303fc8f59a665a642bfc6bf893ce498534c1c6df715c5"'
+  size: 64197
+  hash: md5
+  path: 
+    https://raw.githubusercontent.com/Utsav0706/gearbox/890e275066c7f9520cbbcb223fb867e9923bac0e/data/v2/labels.jsonl
+outs:
+- md5: 51c628fd8b5c440358ada779d55b11c1
+  size: 64197
+  hash: md5
+  path: labels.jsonl
