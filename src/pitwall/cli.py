@@ -172,7 +172,7 @@ def runs() -> None:
     if not found:
         typer.echo("no runs yet")
         return
-    typer.echo(f"{'run':<22} {'kind':<10} {'acc':>6} {'under':>6} {'pass':>6}  data      id")
+    typer.echo(f"{'run':<26} {'kind':<10} {'acc':>6} {'under':>6} {'pass':>6}  data      id")
     for r in found:
         m, t = r["metrics"], r["tags"]
 
@@ -180,7 +180,7 @@ def runs() -> None:
             return f"{100 * m[key]:.1f}%" if key in m else "-"
 
         typer.echo(
-            f"{r['name']:<22} {t.get('kind', '-'):<10} {pct('accuracy'):>6} "
+            f"{r['name']:<26} {t.get('kind', '-'):<10} {pct('accuracy'):>6} "
             f"{pct('under_rate'):>6} {pct('pass_rate'):>6}  {t.get('data_version', '-')[:8]:<8}  "
             f"{r['id'][:8]}"
         )

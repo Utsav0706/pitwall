@@ -108,7 +108,7 @@ def table(rows: list[tuple[str, dict[str, Any]]]) -> str:
         return "-" if v is None else f"{100 * v:.1f}%"
 
     head = (
-        f"{'run':<22} {'acc':>6} {'under':>6} {'over':>6} {'cost':>5} {'pass':>6} "
+        f"{'run':<26} {'acc':>6} {'under':>6} {'over':>6} {'cost':>5} {'pass':>6} "
         f"{'S/M/L picks':>12} {'hard acc':>8}"
     )
     lines = [head, "-" * len(head)]
@@ -116,7 +116,7 @@ def table(rows: list[tuple[str, dict[str, Any]]]) -> str:
         picks = "/".join(str(m["picks"][t]) for t in TIERS)
         hard = m.get("by_part", {}).get("hard", {}).get("accuracy")
         lines.append(
-            f"{name:<22} {pct(m['accuracy']):>6} {pct(m['under_rate']):>6} "
+            f"{name:<26} {pct(m['accuracy']):>6} {pct(m['under_rate']):>6} "
             f"{pct(m['over_rate']):>6} {m['routing_cost']:>5.2f} {pct(m.get('pass_rate')):>6} "
             f"{picks:>12} {pct(hard):>8}"
         )
