@@ -10,7 +10,7 @@ versions its data, trains it, tracks every run, gates it with
 One of four connected projects: [Scout](https://github.com/Utsav0706/scout) (research
 agent), Gearbox (LLM router), Dyno (agent evals) and Pitwall.
 
-**Status:** M3, fine-tuning code ready; first Colab run next.
+**Status:** M3, first fine-tune trained. Test-set evaluation comes next (M4).
 
 ## Run
 
@@ -104,6 +104,12 @@ validation results, library versions, GGUF sha256). Check it with
   on the quantised model.
 - **Pinned tools.** llama.cpp `b11838`: the converter at a verified commit and a prebuilt
   `llama-quantize` checked against the release's sha256, so nothing is compiled.
+
+**First run (`ft-train_old`, commit f73c05f, Tesla T4, 145 s, peak 3.7 GB GPU):** on the
+73 validation prompts the lowest routing cost came from 1 epoch at threshold 0.6, which
+picks M for every prompt: the fine-tune, like the LR baseline, found nothing better than
+always-M on this data. Epochs 3-4 start separating S from M but under-route more. The
+test-set numbers, on the quantised model, come in M4.
 
 `python -m pitwall.finetune.train --smoke ...` runs the whole script (training, choice,
 export, bundle) on a tiny random model on CPU in seconds.
