@@ -221,3 +221,9 @@ def test_notebook_removes_colabs_old_torchao() -> None:
     nb = json.loads((ROOT / "notebooks" / "train_router_colab.ipynb").read_text(encoding="utf-8"))
     code = "".join("".join(c["source"]) for c in nb["cells"] if c["cell_type"] == "code")
     assert code.index("pip uninstall -q -y torchao") < code.index("pitwall.finetune.train")
+
+
+def test_notebook_stops_without_a_gpu() -> None:
+    nb = json.loads((ROOT / "notebooks" / "train_router_colab.ipynb").read_text(encoding="utf-8"))
+    first = "".join(next(c["source"] for c in nb["cells"] if c["cell_type"] == "code"))
+    assert "nvidia-smi" in first and "assert _exit_code == 0" in first

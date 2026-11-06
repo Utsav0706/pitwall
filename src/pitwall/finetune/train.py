@@ -298,6 +298,14 @@ def main(argv: list[str]) -> int:
 
     args = parse_args(argv)
     device = "cuda" if torch.cuda.is_available() and not args.smoke else "cpu"
+    if device == "cpu" and not args.smoke:
+        # A 0.6B fine-tune on CPU takes hours; better to stop at once and say why.
+        print(
+            "error: no GPU. On Colab: Runtime -> Change runtime type -> T4 GPU, then run all "
+            "again. (A free Colab GPU session can end and reconnect you to a CPU runtime.)",
+            file=sys.stderr,
+        )
+        return 2
     random.seed(args.seed)
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
