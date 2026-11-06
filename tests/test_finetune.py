@@ -211,3 +211,10 @@ def test_colab_requirements_are_pinned_and_skip_torch() -> None:
     ]
     assert all("==" in line for line in lines)
     assert not any(line.startswith("torch") for line in lines)
+
+
+def test_notebook_removes_colabs_old_torchao() -> None:
+    # peft refuses to load beside torchao < 0.16, and Colab ships 0.10 (first Colab run).
+    nb = json.loads((ROOT / "notebooks" / "train_router_colab.ipynb").read_text(encoding="utf-8"))
+    code = "".join("".join(c["source"]) for c in nb["cells"] if c["cell_type"] == "code")
+    assert code.index("pip uninstall -q -y torchao") < code.index("pitwall.finetune.train")

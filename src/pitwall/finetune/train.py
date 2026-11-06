@@ -119,7 +119,7 @@ def load_model(args: argparse.Namespace, tok: Any, device: str) -> Any:
     # fp32 weights: a T4 has no bf16, and pure fp16 weights can overflow; autocast gives
     # fp16 speed for the matrix multiplications.
     return AutoModelForCausalLM.from_pretrained(
-        args.base, revision=args.revision, torch_dtype=torch.float32
+        args.base, revision=args.revision, dtype=torch.float32
     ).to(device)
 
 
