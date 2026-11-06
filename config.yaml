@@ -1,0 +1,19 @@
+# Pitwall's rules. Machine-specific settings (URLs, ports) live in .env instead.
+# Validated by pitwall.config.PitwallConfig; unknown keys are an error.
+
+promotion:
+  # A candidate model is promoted only if its p95 routing latency is at most this (M6).
+  # Gearbox's v3 router answers in a few ms; a small LLM on CPU is far slower, so this
+  # limit is the real cost of the fine-tune. 300 ms is a first guess, revisited in M4.
+  p95_ms_limit: 300
+  # Largest allowed accuracy drop vs the production model, in percentage points.
+  # 0: the spec says accuracy >= production.
+  max_drop_pp: 0
+
+canary:
+  # Share of Gearbox traffic sent to the candidate before promotion (M7).
+  percent: 10
+
+drift:
+  # Alert when at least this share of monitored features has drifted (M9).
+  threshold: 0.5

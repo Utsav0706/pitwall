@@ -1,0 +1,53 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pitwall"
+version = "0.1.0"
+description = "LLMOps for one real model: version data, fine-tune, track, gate with Dyno, serve, monitor, retrain."
+readme = "README.md"
+requires-python = ">=3.12"
+authors = [{ name = "Utsav Jivani (Uv)" }]
+# Only what the code imports today. Each milestone adds its own dependencies.
+dependencies = [
+    "typer>=0.15",
+    "pydantic>=2.9",
+    "pydantic-settings>=2.6",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+# The operations tools later milestones use. Kept out of the core install until the code
+# needs them, so CI and `pip install -e .` stay small; `pitwall doctor` reports on them.
+ops = [
+    "mlflow>=3.0",
+    "dvc>=3.50",
+    "evidently>=0.7",
+    # Evidently 0.7.23 imports a pandas internal that pandas 3 removed (ImportError).
+    "pandas>=2.2,<3",
+]
+dev = [
+    "pytest>=8.3",
+    "ruff>=0.8",
+]
+
+[project.scripts]
+pitwall = "pitwall.cli:app"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/pitwall"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+# E/F: pycodestyle + pyflakes basics, I: import order, UP: modern syntax,
+# B: likely bugs, SIM: simplifications.
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
