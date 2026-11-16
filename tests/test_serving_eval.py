@@ -88,10 +88,49 @@ def test_http_error_is_an_ollama_error() -> None:
         ollama.OllamaRouter("http://ollama", "m", client=client).answer("x")
 
 
-def test_model_name_and_modelfile(tmp_path: Path) -> None:
+def test_model_name() -> None:
     assert ollama.model_name("ft-train_old") == "pitwall-ft-train-old"
-    text = ollama.modelfile(tmp_path / "model.gguf")
-    assert text.startswith('FROM "') and "PARAMETER temperature 0" in text
+
+
+def test_create_uploads_blob_then_creates(tmp_path: Path) -> None:
+    gguf = tmp_path / "model.gguf"
+    gguf.write_bytes(b"GGUF tiny")
+    calls: list[tuple[str, str]] = []
+    bodies: dict[str, bytes] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append((request.method, request.url.path))
+        bodies[request.url.path] = request.read()
+        if request.method == "HEAD":
+            return httpx.Response(404)
+        return httpx.Response(200, json={"status": "success"})
+
+    client = httpx.Client(base_url="http://o", transport=httpx.MockTransport(handler))
+    ollama.create(client, "pitwall-x", gguf)
+    digest = "sha256:" + ollama._sha256(gguf)
+    assert calls == [
+        ("HEAD", f"/api/blobs/{digest}"),
+        ("POST", f"/api/blobs/{digest}"),
+        ("POST", "/api/create"),
+    ]
+    assert bodies[f"/api/blobs/{digest}"] == b"GGUF tiny"
+    create_body = json.loads(bodies["/api/create"])
+    assert create_body["files"] == {"model.gguf": digest}
+    assert create_body["parameters"]["temperature"] == 0
+
+
+def test_create_skips_upload_when_blob_exists(tmp_path: Path) -> None:
+    gguf = tmp_path / "model.gguf"
+    gguf.write_bytes(b"GGUF tiny")
+    methods: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        methods.append(f"{request.method} {request.url.path.split('/')[2]}")
+        return httpx.Response(200, json={})
+
+    client = httpx.Client(base_url="http://o", transport=httpx.MockTransport(handler))
+    ollama.create(client, "pitwall-x", gguf, sha256="ab" * 32)
+    assert methods == ["HEAD blobs", "POST create"]
 
 
 # --- routing a set of prompts -------------------------------------------------------------

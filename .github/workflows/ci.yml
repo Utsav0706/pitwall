@@ -59,3 +59,16 @@ jobs:
           dvc status
           git diff --exit-code
           pitwall data show
+
+  # The service image builds and starts its CLI (no Docker on the dev machine, so CI is
+  # where the image is proven).
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: docker build -t pitwall:ci .
+      - name: CLI inside the image
+        run: |
+          docker run --rm pitwall:ci pitwall version
+          docker run --rm pitwall:ci python -c "import mlflow, pitwall.serving.app"

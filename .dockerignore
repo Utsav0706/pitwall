@@ -1,0 +1,12 @@
+.venv/
+.git/
+.cache/
+.llama.cpp/
+bundles/
+mlruns/
+mlartifacts/
+mlflow.db
+*.db
+data/
+notebooks/
+tests/

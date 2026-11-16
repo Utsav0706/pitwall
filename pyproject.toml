@@ -16,6 +16,10 @@ dependencies = [
     "pydantic-settings>=2.6",
     "pyyaml>=6.0",
     "httpx>=0.28",  # Ollama client (M4) and the serving API (M5)
+    "fastapi>=0.115",
+    "uvicorn>=0.32",
+    "sqlalchemy>=2.0",
+    "alembic>=1.14",
 ]
 
 [project.optional-dependencies]
@@ -27,6 +31,11 @@ ops = [
     "evidently>=0.7",
     # Evidently 0.7.23 imports a pandas internal that pandas 3 removed (ImportError).
     "pandas>=2.2,<3",
+]
+# pitwall serve: the registry client only (mlflow-skinny, no server or UI), so the
+# service's Docker image stays small.
+serve = [
+    "mlflow-skinny>=3.0",
 ]
 # pitwall baseline: local sentence embeddings + logistic regression. torch is large,
 # so it stays out of the core install.

@@ -240,7 +240,10 @@ def evaluate(
     settings = get_settings()
     name = model_name(manifest.name)
     typer.echo(f"loading {directory / 'model.gguf'} into Ollama as {name} (CPU)")
-    create(name, directory / "model.gguf")
+    import httpx
+
+    with httpx.Client(base_url=settings.ollama_base_url) as ollama_client:
+        create(ollama_client, name, directory / "model.gguf", manifest.gguf.sha256)
     router = OllamaRouter(settings.ollama_base_url, name)
     router.answer("warm-up\n\nTier:")  # loads the model, so it isn't timed
 
@@ -325,3 +328,16 @@ def compare(
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(cmp.render(runs, replay), encoding="utf-8", newline="\n")
     typer.echo(f"wrote {out} ({len(runs)} routers, {len(replay)} replay rows)")
+
+
+@app.command()
+def serve(
+    host: Annotated[str, typer.Option(help="Interface to listen on.")] = "127.0.0.1",
+    port: Annotated[int | None, typer.Option(help="Port (default PITWALL_PORT, 8003).")] = None,
+) -> None:
+    """Run the routing service: POST /route, GET /health, GET /models."""
+    import uvicorn
+
+    from pitwall.serving.app import create_app
+
+    uvicorn.run(create_app(), host=host, port=port or get_settings().pitwall_port)

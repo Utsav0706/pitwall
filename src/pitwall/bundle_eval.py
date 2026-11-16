@@ -17,12 +17,11 @@ from typing import Any
 import numpy as np
 
 from pitwall import evaluation
-from pitwall.baseline import decide
 from pitwall.data import Pair, load_pairs, sha256_file
 from pitwall.finetune import bundle as bundle_mod
 from pitwall.finetune import core
 from pitwall.metrics import TIERS
-from pitwall.ollama import FALLBACK, OllamaRouter
+from pitwall.ollama import OllamaRouter, choose_tier
 from pitwall.textformat import render_pair
 
 
@@ -41,13 +40,8 @@ def route(
     for i, pair in enumerate(pairs, 1):
         answer = router.answer(render_pair(pair)[0])
         p = np.asarray(answer.probs)
-        if answer.no_answer:
-            missing += 1
-            tier, reason = FALLBACK, "ft: no S/M/L in the model's top tokens, fallback M"
-        else:
-            tier = TIERS[decide(p, threshold)]
-            probs = " ".join(f"P({t})={v:.2f}" for t, v in zip(TIERS, p, strict=True))
-            reason = f"ft: {probs}, threshold {threshold}"
+        missing += answer.no_answer
+        tier, reason = choose_tier(answer, threshold)
         preds.append(evaluation.Prediction(pair.id, name, tier, reason, answer.latency_ms, 0.0))
         rows.append(p)
         latencies.append(answer.latency_ms)

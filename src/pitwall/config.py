@@ -34,6 +34,16 @@ class Settings(BaseSettings):
     dyno_database_url: str = "sqlite:///dyno.db"
     # Windows reserves 8000; Scout uses 8001, Gearbox 8002.
     pitwall_port: int = 8003
+    # The route log (M5). SQLite: one file, nothing to install.
+    database_url: str = "sqlite:///pitwall.db"
+    # Which model /route serves when a request doesn't say: an MLflow alias of
+    # pitwall-router (production, candidate) or a fixed version (v1).
+    pitwall_model: str = "production"
+    # Where registered bundles are downloaded to, once per version.
+    model_cache_dir: Path = Path(".cache/models")
+    # How often an alias is looked up again, so a promotion or rollback takes effect
+    # without restarting the service.
+    alias_refresh_s: float = 30.0
     log_level: str = "WARNING"
 
 

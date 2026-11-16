@@ -13,10 +13,9 @@
 
 from __future__ import annotations
 
+import hashlib
 import math
 import re
-import subprocess
-import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -41,24 +40,39 @@ def model_name(bundle_name: str) -> str:
     return "pitwall-" + re.sub(r"[^a-z0-9]+", "-", bundle_name.lower()).strip("-")
 
 
-def modelfile(gguf: Path) -> str:
-    return (
-        f'FROM "{gguf.resolve().as_posix()}"\n'
-        "PARAMETER temperature 0\n"
-        f"PARAMETER num_ctx {NUM_CTX}\n"
-    )
+def create(client: httpx.Client, name: str, gguf: Path, sha256: str | None = None) -> None:
+    """Create an Ollama model from a GGUF over Ollama's HTTP API.
 
-
-def create(name: str, gguf: Path) -> None:
-    """`ollama create` from a Modelfile in a temp folder (the bundle stays untouched)."""
-    with tempfile.TemporaryDirectory() as tmp:
-        path = Path(tmp) / "Modelfile"
-        path.write_text(modelfile(gguf), encoding="utf-8")
-        result = subprocess.run(
-            ["ollama", "create", name, "-f", str(path)], capture_output=True, text=True
+    Upload the file as a blob (skipped when Ollama already has it), then create the
+    model from that blob. Over HTTP, not the `ollama` CLI: the CLI only works when Ollama
+    can read the file's path, which isn't true once Pitwall runs in a container.
+    """
+    digest = "sha256:" + (sha256 or _sha256(gguf))
+    try:
+        if client.head(f"/api/blobs/{digest}").status_code != 200:
+            with gguf.open("rb") as f:
+                client.post(f"/api/blobs/{digest}", content=f, timeout=600).raise_for_status()
+        response = client.post(
+            "/api/create",
+            json={
+                "model": name,
+                "files": {"model.gguf": digest},
+                "parameters": {"temperature": 0, "num_ctx": NUM_CTX},
+                "stream": False,
+            },
+            timeout=600,
         )
-    if result.returncode != 0:
-        raise OllamaError(f"ollama create {name} failed: {result.stderr.strip()[-500:]}")
+        response.raise_for_status()
+    except httpx.HTTPError as exc:
+        raise OllamaError(f"creating {name} in Ollama failed: {exc}") from exc
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as f:
+        for block in iter(lambda: f.read(1 << 20), b""):
+            digest.update(block)
+    return digest.hexdigest()
 
 
 @dataclass(frozen=True)
@@ -114,3 +128,20 @@ class OllamaRouter:
         top = logprobs[0].get("top_logprobs", []) if logprobs else []
         probs, missing = probs_from_logprobs(top)
         return Answer(probs, missing, round(latency, 1), int(data.get("prompt_eval_count", 0)))
+
+
+def choose_tier(answer: Answer, threshold: float) -> tuple[str, str]:
+    """(tier, reason) from the model's answer: the cheapest tier whose cumulative
+    probability reaches the threshold, or M when the model gave none of the three.
+    Used by evaluation and by the service, so both decide the same way."""
+    if answer.no_answer:
+        return FALLBACK, "ft: no S/M/L in the model's top tokens, fallback M"
+    cumulative = 0.0
+    tier = TIERS[-1]
+    for t, p in zip(TIERS, answer.probs, strict=True):
+        cumulative += p
+        if cumulative >= threshold - 1e-12:
+            tier = t
+            break
+    probs = " ".join(f"P({t})={v:.2f}" for t, v in zip(TIERS, answer.probs, strict=True))
+    return tier, f"ft: {probs}, threshold {threshold}"
