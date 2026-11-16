@@ -8,6 +8,7 @@ and its --help can't drift apart, and CliRunner tests it without a subprocess.
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 from typing import Annotated
 
@@ -32,6 +33,11 @@ app.add_typer(prompts_app, name="prompts")
 
 @app.callback()
 def main() -> None:
+    # Windows consoles and pipes use cp1252: a library printing an emoji (MLflow prints
+    # one when a run ends) would crash the command. Replace what can't be shown instead.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(errors="replace")
     setup_logging(get_settings().log_level)
 
 

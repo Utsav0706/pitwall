@@ -265,9 +265,10 @@ def promote(ref: str, settings: Settings, rules: PromotionRules) -> Result:
         "baseline_under_rate": baseline.under_rate,
         "candidate_p95_ms": candidate.latency_p95_ms,
     }
+    # Record first, then act: a promotion must never happen without its record.
+    mlflow_run = log_decision("promotion", record, metrics)
     if decision.promote:
         c.set_registered_model_alias(REGISTERED_MODEL, PRODUCTION, str(candidate_version))
-    mlflow_run = log_decision("promotion", record, metrics)
     return Result(
         decision,
         candidate_version,
@@ -305,12 +306,12 @@ def rollback() -> tuple[str, str, str]:
             f"{to_label} was the first production model (it replaced the always-M rule); "
             "there is no earlier model to roll back to"
         )
-    c.set_registered_model_alias(REGISTERED_MODEL, PRODUCTION, from_label[1:])
     run = log_decision(
         "rollback",
         {"decision": "rolled back", "from": to_label, "to": from_label},
         {},
     )
+    c.set_registered_model_alias(REGISTERED_MODEL, PRODUCTION, from_label[1:])
     return to_label, from_label, run
 
 

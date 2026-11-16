@@ -234,3 +234,15 @@ def test_suite_has_one_exact_case_per_test_prompt(tmp_path: Path) -> None:
     from dyno.cases import load_suite
 
     assert len(load_suite(out).cases) == 2  # Dyno accepts it
+
+
+def test_decision_is_recorded_before_the_alias_moves(world, monkeypatch) -> None:
+    reg, _, _, _ = world
+
+    def broken_log(kind, record, metrics):
+        raise RuntimeError("tracking server down")
+
+    monkeypatch.setattr(p, "log_decision", broken_log)
+    with pytest.raises(RuntimeError):
+        p.promote("v1", settings(), RULES)
+    assert "production" not in reg.aliases  # no record -> no promotion
