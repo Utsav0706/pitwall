@@ -10,7 +10,7 @@ versions its data, trains it, tracks every run, gates it with
 One of four connected projects: [Scout](https://github.com/Utsav0706/scout) (research
 agent), Gearbox (LLM router), Dyno (agent evals) and Pitwall.
 
-**Status:** M6, v1 promoted to production through the Dyno gate. Canary next (M7).
+**Status:** M7, Gearbox routes through Pitwall with a canary. Monitoring next (M8).
 
 ## Run
 
@@ -198,6 +198,27 @@ runs of v1 gave the same tier on all 119 cases.
 
 v1 is production because it matches always-M on every rule, not because it beats it:
 it is the starting point the rest of the loop (canary, drift, retraining) improves on.
+
+## Canary through Gearbox
+
+Gearbox's router v4 (`routers/pitwall.py` in Gearbox) asks this service for the tier.
+It is registered twice: `v4-finetuned` (Pitwall's `production` model) and
+`v4-candidate` (its `candidate`), so Gearbox's own canary setting tries a new version
+on a share of real traffic. If Pitwall is down, slow or errors, Gearbox routes to M and
+keeps answering.
+
+```bash
+pitwall canary config          # runs/gearbox-canary.yaml: Gearbox's config, routed via Pitwall
+..\gearbox\.venv\Scripts\python.exe scripts\gearbox_canary.py    # Gearbox on :8002, canary 10%
+pitwall canary replay --n 40 --cap-gbp 0.10    # PAID: labelled prompts through Gearbox
+pitwall canary report runs/canary-<time>.jsonl # per side: share, tiers, pass, cost, latency
+```
+
+First run (both sides are v1, so this tests the mechanism, not a model): 40 requests,
+**GBP 0.0082**; `v4-candidate` got 3 (8%), `v4-finetuned` 37, all routed to M. Pass rates
+of 33% vs 78% on the *same* model show how little 3 requests say: the canary is evidence
+from real traffic, the Dyno gate on all 119 cases makes the decision. With Pitwall
+stopped, Gearbox answered both test requests with M (`pitwall unavailable`).
 
 ## Build steps
 
