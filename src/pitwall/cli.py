@@ -411,3 +411,90 @@ def rollback() -> None:
         typer.echo(f"error: {exc}", err=True)
         raise typer.Exit(1) from exc
     typer.echo(f"rolled back: production {old} -> {new} (mlflow run {run[:8]})")
+
+
+canary_app = typer.Typer(help="Canary release through Gearbox (production + candidate).")
+app.add_typer(canary_app, name="canary")
+
+
+@canary_app.command("config")
+def canary_config(
+    percent: Annotated[
+        float | None, typer.Option(help="Candidate share (default config.yaml).")
+    ] = None,
+) -> None:
+    """Write runs/gearbox-canary.yaml: Gearbox's config routed through Pitwall."""
+    from pitwall import canary as c
+    from pitwall.config import load_config
+
+    settings = get_settings()
+    share = percent if percent is not None else load_config().canary.percent
+    path = c.write_config(settings.gearbox_dir, share, settings.pitwall_url)
+    typer.echo(f"wrote {path} (router {c.PRODUCTION_ROUTER}, canary {c.CANDIDATE_ROUTER} {share}%)")
+
+
+@canary_app.command("replay")
+def canary_replay(
+    n: Annotated[int, typer.Option(help="Prompts to send.")] = 40,
+    cap_gbp: Annotated[float, typer.Option(help="Stop before spending more than this.")] = 0.10,
+    seed: Annotated[int, typer.Option(help="Which prompts, in which order.")] = 7,
+    out: Annotated[
+        Path | None, typer.Option(help="Rows file (default runs/canary-<time>.jsonl).")
+    ] = None,
+) -> None:
+    """Send labelled test prompts through Gearbox (PAID: Gearbox calls its model tiers)."""
+    import time as _time
+
+    import httpx
+
+    from pitwall import canary as c
+    from pitwall import evaluation
+
+    prompts = c.pick_prompts(data_mod.load_pairs(evaluation.TEST_FILE), n, seed)
+    out = out or Path(f"runs/canary-{_time.strftime('%Y%m%d-%H%M%S')}.jsonl")
+    typer.echo(
+        f"replaying {len(prompts)} prompts through {get_settings().gearbox_url}, cap GBP {cap_gbp}"
+    )
+
+    def progress(i: int, total: int, spent: float) -> None:
+        if i % 10 == 0 or i == total:
+            typer.echo(f"  {i}/{total}  GBP {spent:.4f}")
+
+    with httpx.Client(base_url=get_settings().gearbox_url, timeout=180) as client:
+        sent, spent, capped = c.replay(client, prompts, cap_gbp, out, progress)
+    typer.echo(
+        f"{sent} requests, GBP {spent:.4f}{' (stopped at the cap)' if capped else ''} -> {out}"
+    )
+
+
+@canary_app.command("report")
+def canary_report(
+    rows_file: Annotated[Path, typer.Argument(help="A runs/canary-*.jsonl file")],
+) -> None:
+    """Compare production and candidate on a replay; log it to MLflow (kind=canary)."""
+    import mlflow
+
+    from pitwall import canary as c
+    from pitwall import evaluation, metrics, tracking
+
+    rows = c.read_rows(rows_file)
+    summary = c.summarise(rows, metrics.load_scores(evaluation.SCORES_FILE))
+    errors = sum(r["status"] != 200 for r in rows)
+    typer.echo(c.render(summary, errors))
+    with tracking.run(
+        f"canary {rows_file.stem}", "canary", tags={"rows_file": rows_file.name}
+    ) as r:
+        for router, s in summary.items():
+            side = "candidate" if router == c.CANDIDATE_ROUTER else "production"
+            for key in (
+                "requests",
+                "share",
+                "pass_rate",
+                "cost_per_request_gbp",
+                "latency_p95_ms",
+                "fail_safe",
+            ):
+                if s[key] is not None:
+                    mlflow.log_metric(f"{side}.{key}", float(s[key]))
+        mlflow.log_dict({"summary": summary, "errors": errors}, "canary.json")
+        typer.echo(f"mlflow run {r.info.run_id[:8]}")
