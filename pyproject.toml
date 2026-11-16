@@ -37,6 +37,11 @@ ops = [
 serve = [
     "mlflow-skinny>=3.0",
 ]
+# pitwall promote / rollback: Dyno runs the gate's cases and decides pass/fail. Pinned
+# to a commit; only Dyno's CLI and its documented gate() are used.
+gate = [
+    "dyno @ git+https://github.com/Utsav0706/dyno@bf089379bc6fe549d514b809f4b1bad534f599a0",
+]
 # pitwall baseline: local sentence embeddings + logistic regression. torch is large,
 # so it stays out of the core install.
 baseline = [
@@ -48,10 +53,15 @@ dev = [
     "ruff>=0.8",
     "scikit-learn>=1.5",  # baseline tests use a fake embedder, so no torch in CI
     "mlflow>=3.0",  # tracking tests log to a temporary SQLite store
+    "dyno @ git+https://github.com/Utsav0706/dyno@bf089379bc6fe549d514b809f4b1bad534f599a0",
 ]
 
 [project.scripts]
 pitwall = "pitwall.cli:app"
+
+[tool.hatch.metadata]
+# Dyno is installed from GitHub (pinned commit), not from PyPI.
+allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/pitwall"]

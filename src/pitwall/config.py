@@ -34,6 +34,8 @@ class Settings(BaseSettings):
     dyno_database_url: str = "sqlite:///dyno.db"
     # Windows reserves 8000; Scout uses 8001, Gearbox 8002.
     pitwall_port: int = 8003
+    # The running service, as the promotion gate's Dyno runs reach it (M6).
+    pitwall_url: str = "http://127.0.0.1:8003"
     # The route log (M5). SQLite: one file, nothing to install.
     database_url: str = "sqlite:///pitwall.db"
     # Which model /route serves when a request doesn't say: an MLflow alias of

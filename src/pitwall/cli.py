@@ -341,3 +341,67 @@ def serve(
     from pitwall.serving.app import create_app
 
     uvicorn.run(create_app(), host=host, port=port or get_settings().pitwall_port)
+
+
+@data_app.command("dyno-suite")
+def data_dyno_suite() -> None:
+    """Write the promotion gate's Dyno suite from the test pairs (run by `dvc repro`)."""
+    from pitwall.dyno_suite import SUITE_FILE, write_suite
+
+    typer.echo(f"wrote {SUITE_FILE} ({write_suite()} cases)")
+
+
+@app.command()
+def candidate(
+    ref: Annotated[str, typer.Argument(help="Registered version to try, e.g. v2")],
+) -> None:
+    """Point the 'candidate' alias at a registered version (no gate: it is only a label)."""
+    from pitwall import promote as p
+
+    try:
+        version = p.set_candidate(ref)
+    except Exception as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(1) from exc
+    typer.echo(f"candidate -> v{version}")
+
+
+@app.command()
+def promote(
+    ref: Annotated[
+        str, typer.Argument(help="Version to promote: candidate (alias) or vN")
+    ] = "candidate",
+) -> None:
+    """Gate a candidate against production (Dyno + under-routing + p95); promote on a pass.
+    Needs the service running (pitwall serve) so Dyno can call /route."""
+    from pitwall import promote as p
+    from pitwall.config import load_config
+
+    try:
+        result = p.promote(ref, get_settings(), load_config().promotion)
+    except p.PromotionError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(1) from exc
+    for check in result.decision.checks:
+        typer.echo(f"{'pass' if check.passed else 'FAIL'}  {check.name:<14} {check.detail}")
+    verdict = "PROMOTED" if result.decision.promote else "REJECTED"
+    typer.echo(
+        f"{verdict}: v{result.candidate_version} vs {result.baseline} "
+        f"(dyno runs {result.dyno_runs['candidate']} / {result.dyno_runs['baseline']}, "
+        f"mlflow run {result.mlflow_run[:8]})"
+    )
+    if not result.decision.promote:
+        raise typer.Exit(1)
+
+
+@app.command()
+def rollback() -> None:
+    """Put production back on the version the last promotion replaced."""
+    from pitwall import promote as p
+
+    try:
+        old, new, run = p.rollback()
+    except p.PromotionError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(1) from exc
+    typer.echo(f"rolled back: production {old} -> {new} (mlflow run {run[:8]})")

@@ -37,3 +37,19 @@ stages:
       md5: 709cd348e6c2d69c184bb74d5a168b70.dir
       size: 825516
       nfiles: 5
+  router_suite:
+    cmd: pitwall data dyno-suite
+    deps:
+    - path: data/derived/test.jsonl
+      hash: md5
+      md5: 096d53e70fedfc00f243f1f535d322f3
+      size: 91762
+    - path: src/pitwall/dyno_suite.py
+      hash: md5
+      md5: 99a112b58d3abdc475c041f609691cad
+      size: 1504
+    outs:
+    - path: data/dyno/router_suite.yaml
+      hash: md5
+      md5: 4f184ac43cee746bbcbcd90a7e5ecef7
+      size: 45955

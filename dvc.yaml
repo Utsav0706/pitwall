@@ -13,3 +13,10 @@ stages:
       - src/pitwall/prompts.py
     outs:
       - data/derived
+  router_suite:
+    cmd: pitwall data dyno-suite
+    deps:
+      - data/derived/test.jsonl
+      - src/pitwall/dyno_suite.py
+    outs:
+      - data/dyno/router_suite.yaml
