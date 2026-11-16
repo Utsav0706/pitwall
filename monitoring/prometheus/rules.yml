@@ -1,0 +1,35 @@
+# Alerts on the routing service. They show on Prometheus's Alerts page
+# (http://127.0.0.1:9090/alerts); no Alertmanager, which keeps the setup small.
+groups:
+  - name: pitwall
+    rules:
+      - alert: PitwallDown
+        expr: up{job="pitwall"} == 0
+        for: 1m
+        annotations:
+          summary: Pitwall's routing service is not answering
+          description: Gearbox falls back to M while it is down, so answers continue but cost more.
+
+      # The same limit the promotion rule uses (config.yaml: promotion.p95_ms_limit).
+      - alert: PitwallSlowRouting
+        expr: histogram_quantile(0.95, sum by (le) (rate(pitwall_route_latency_seconds_bucket[5m]))) > 0.6
+        for: 10m
+        annotations:
+          summary: Routing p95 above 600 ms for 10 minutes
+          description: Longer prompts than the model was measured on, or the CPU is busy.
+
+      - alert: PitwallFailSafes
+        expr: >
+          sum(rate(pitwall_route_requests_total{fallback="true"}[10m]))
+          / sum(rate(pitwall_route_requests_total[10m])) > 0.05
+        for: 10m
+        annotations:
+          summary: Over 5% of decisions fell back to M
+          description: The model gave none of S, M, L as its next token; check the served version.
+
+      - alert: PitwallErrors
+        expr: sum(rate(pitwall_route_errors_total[5m])) > 0
+        for: 5m
+        annotations:
+          summary: Pitwall is answering requests with errors
+          description: No model for the requested alias, or Ollama is down (see the reason label).

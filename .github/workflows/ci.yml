@@ -72,3 +72,38 @@ jobs:
         run: |
           docker run --rm pitwall:ci pitwall version
           docker run --rm pitwall:ci python -c "import mlflow, pitwall.serving.app"
+
+  # Monitoring as code works: promtool accepts the config and alert rules, and the
+  # Compose stack starts with Prometheus scraping Pitwall and Grafana showing the
+  # dashboard (no Docker on the dev machine, so this is where it is proven).
+  monitoring:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: promtool check
+        run: |
+          docker run --rm -v "$PWD/monitoring/prometheus:/p:ro" --entrypoint promtool \
+            prom/prometheus:v3.15.1 check config /p/prometheus.compose.yml
+          docker run --rm -v "$PWD/monitoring/prometheus:/p:ro" --entrypoint promtool \
+            prom/prometheus:v3.15.1 check rules /p/rules.yml
+      - name: Start the stack
+        run: docker compose -f monitoring/docker-compose.yml up -d --build
+      - name: Prometheus scrapes Pitwall; Grafana has the dashboard
+        run: |
+          for i in $(seq 1 30); do
+            state=$(curl -s localhost:9090/api/v1/targets \
+              | python3 -c "import json,sys; t=json.load(sys.stdin)['data']['activeTargets']; print(t[0]['health'] if t else 'none')" || echo starting)
+            [ "$state" = "up" ] && break
+            sleep 5
+          done
+          echo "pitwall target: $state"; [ "$state" = "up" ]
+          rules=$(curl -s localhost:9090/api/v1/rules | python3 -c "import json,sys; print(sum(len(g['rules']) for g in json.load(sys.stdin)['data']['groups']))")
+          echo "alert rules loaded: $rules"; [ "$rules" = "4" ]
+          for i in $(seq 1 20); do
+            title=$(curl -s localhost:3000/api/dashboards/uid/pitwall | python3 -c "import json,sys; print(json.load(sys.stdin)['dashboard']['title'])" 2>/dev/null) && break
+            sleep 3
+          done
+          echo "grafana dashboard: $title"; [ "$title" = "Pitwall router" ]
+      - name: Logs on failure
+        if: failure()
+        run: docker compose -f monitoring/docker-compose.yml logs --tail 50

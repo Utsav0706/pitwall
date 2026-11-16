@@ -3,6 +3,7 @@
     POST /route   {"prompt": "...", "model": "production"}  -> tier, reason, version, probs
     GET  /health  ready when Ollama answers and the default model is loaded
     GET  /models  which version each reference is serving
+    GET  /metrics Prometheus metrics (pitwall.serving.metrics)
 
 Run: `pitwall serve` (port 8003). Endpoints are plain `def`: the Ollama call blocks, so
 FastAPI runs each request in its worker threads instead of stalling the event loop.
@@ -18,6 +19,7 @@ from typing import Annotated
 
 import httpx
 from fastapi import FastAPI, Header, HTTPException
+from prometheus_client import make_asgi_app
 from pydantic import BaseModel, Field
 from sqlalchemy import Engine
 from sqlalchemy.orm import Session
@@ -26,6 +28,7 @@ from pitwall import __version__
 from pitwall.config import Settings, get_settings
 from pitwall.ollama import OllamaError, OllamaRouter, choose_tier
 from pitwall.serving.db import RouteLog, open_engine
+from pitwall.serving.metrics import ServiceMetrics
 from pitwall.serving.models import MlflowResolver, ModelManager, ModelUnavailable
 from pitwall.textformat import render
 
@@ -62,6 +65,9 @@ def create_app(
     )
     engine = engine or open_engine(settings.database_url)
     app = FastAPI(title="Pitwall router", version=__version__)
+    metrics = ServiceMetrics()
+    app.mount("/metrics", make_asgi_app(registry=metrics.registry))
+    app.state.metrics = metrics
 
     @app.post("/route", response_model=RouteResponse)
     def route(
@@ -73,6 +79,7 @@ def create_app(
         try:
             model = manager.get(ref)
         except ModelUnavailable as exc:
+            metrics.errors.labels("model_unavailable").inc()
             raise HTTPException(503, str(exc)) from exc
         template = model.template
         seen = body.prompt[: template.max_prompt_chars]
@@ -81,9 +88,12 @@ def create_app(
         try:
             answer = OllamaRouter("", model.ollama_name, client=client).answer(text)
         except OllamaError as exc:
+            metrics.errors.labels("ollama").inc()
             raise HTTPException(503, str(exc)) from exc
-        latency = round((time.perf_counter() - start) * 1000, 1)
+        seconds = time.perf_counter() - start
+        latency = round(seconds * 1000, 1)
         tier, reason = choose_tier(answer, model.threshold)
+        metrics.record(ref, model.version, tier, answer.no_answer, seconds, len(body.prompt))
         with Session(engine) as session:
             session.add(
                 RouteLog(

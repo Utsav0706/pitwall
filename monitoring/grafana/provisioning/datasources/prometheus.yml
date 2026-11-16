@@ -1,0 +1,11 @@
+# Grafana reads this at start. PROMETHEUS_URL is set by scripts/monitoring.py (local)
+# or docker-compose.yml.
+apiVersion: 1
+datasources:
+  - name: Prometheus
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    url: ${PROMETHEUS_URL}
+    isDefault: true
+    editable: false

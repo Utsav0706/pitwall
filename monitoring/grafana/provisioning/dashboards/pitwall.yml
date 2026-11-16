@@ -1,0 +1,10 @@
+# Load every dashboard JSON in DASHBOARDS_DIR (monitoring/grafana/dashboards).
+apiVersion: 1
+providers:
+  - name: pitwall
+    folder: Pitwall
+    type: file
+    disableDeletion: true
+    allowUiUpdates: false
+    options:
+      path: ${DASHBOARDS_DIR}

@@ -1,0 +1,14 @@
+# Prometheus in monitoring/docker-compose.yml: scrape the pitwall service by name.
+# A local run uses prometheus.yml (the same, on 127.0.0.1).
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - rules.yml
+
+scrape_configs:
+  - job_name: pitwall
+    metrics_path: /metrics/
+    static_configs:
+      - targets: ["pitwall:8003"]

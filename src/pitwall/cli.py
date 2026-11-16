@@ -498,3 +498,40 @@ def canary_report(
                     mlflow.log_metric(f"{side}.{key}", float(s[key]))
         mlflow.log_dict({"summary": summary, "errors": errors}, "canary.json")
         typer.echo(f"mlflow run {r.info.run_id[:8]}")
+
+
+@app.command()
+def traffic(
+    source: Annotated[
+        str, typer.Option(help="Prompts from data/derived: test, train_old or pool_new (drift).")
+    ] = "test",
+    n: Annotated[int, typer.Option(help="Requests to send (prompts repeat if fewer).")] = 100,
+    model: Annotated[str | None, typer.Option(help="Model reference (default: service's).")] = None,
+    seed: Annotated[int, typer.Option(help="Prompt order.")] = 7,
+) -> None:
+    """Send prompts straight to Pitwall's /route (free: local CPU), e.g. to fill the
+    dashboards, or `--source pool_new` to make the traffic drift on purpose (M9)."""
+    import random as _random
+    from collections import Counter
+
+    import httpx
+
+    pairs = data_mod.load_pairs(data_mod.OUT_DIR / f"{source}.jsonl")
+    texts = [data_mod.prompt_text(p) for p in pairs]
+    rng = _random.Random(seed)
+    tiers: Counter[str] = Counter()
+    errors = 0
+    with httpx.Client(base_url=get_settings().pitwall_url, timeout=60) as client:
+        for i in range(1, n + 1):
+            body = {"prompt": rng.choice(texts)}
+            if model:
+                body["model"] = model
+            r = client.post(
+                "/route", json=body, headers={"x-request-id": f"traffic-{source}-{seed}-{i}"}
+            )
+            if r.status_code == 200:
+                tiers[r.json()["tier"]] += 1
+            else:
+                errors += 1
+            if i % 50 == 0 or i == n:
+                typer.echo(f"  {i}/{n}  tiers {dict(tiers)}  errors {errors}")
