@@ -10,7 +10,7 @@ versions its data, trains it, tracks every run, gates it with
 One of four connected projects: [Scout](https://github.com/Utsav0706/scout) (research
 agent), Gearbox (LLM router), Dyno (agent evals) and Pitwall.
 
-**Status:** M4, first fine-tune evaluated and registered. Serving API next (M5).
+**Status:** M5, routing service running. Promotion gate next (M6).
 
 ## Run
 
@@ -143,6 +143,29 @@ pitwall evaluate bundles/ft-train_old   # Ollama on CPU: validation check, test,
 pitwall register bundles/ft-train_old   # pitwall-router version in the MLflow registry
 pitwall compare                          # reports/compare.md (Gearbox's replay for cost)
 ```
+
+## Routing service
+
+```bash
+pip install -e ".[serve]"
+python scripts/mlflow_server.py          # registry, port 5000
+python scripts/dev_api.py --model v1     # http://127.0.0.1:8003 (Ollama must be running)
+curl -X POST http://127.0.0.1:8003/route -H "content-type: application/json"      -d '{"prompt": "Write a haiku about rain"}'
+# {"tier": "M", "reason": "ft: P(S)=0.27 P(M)=0.73 P(L)=0.00, threshold 0.6",
+#  "model_version": 1, "request_id": "...", "probs": {...}, "latency_ms": 58, "fallback": false}
+```
+
+- `model` in the request (or `PITWALL_MODEL`) is an MLflow alias of `pitwall-router`
+  (`production`, `candidate`) or a fixed version (`v1`). Aliases are looked up again
+  every 30 s, so promoting or rolling back is moving an alias: no restart.
+- A version is downloaded from the registry once, checked (bundle check, GGUF hash =
+  the registry's tag, prompt template hash = the one it was trained with) and created in
+  Ollama over its HTTP API, so the service also works from a container.
+- Every decision is written to the route log (`pitwall.db`, Alembic-managed), with the
+  prompt as the model saw it: drift detection and retraining read it later. It stays
+  local.
+- `GET /health` (503 until Ollama answers and the default model is loaded), `GET /models`.
+- `Dockerfile`: `python:3.12-slim`, no torch, no model inside; CI builds it.
 
 ## Build steps
 
