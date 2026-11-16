@@ -171,7 +171,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(rate(pitwall_route_requests_total{fallback=\"true\"}[10m])) / sum(rate(pitwall_route_requests_total[10m]))",
+          "expr": "(sum(rate(pitwall_route_requests_total{fallback=\"true\"}[10m])) or vector(0)) / sum(rate(pitwall_route_requests_total[10m]))",
           "legendFormat": "fail-safe",
           "refId": "A"
         }
@@ -284,6 +284,7 @@
             "lineWidth": 2,
             "fillOpacity": 10,
             "showPoints": "never",
+            "axisSoftMax": 0.7,
             "thresholdsStyle": {
               "mode": "line"
             }
@@ -492,7 +493,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(rate(pitwall_route_requests_total{fallback=\"true\"}[10m])) / sum(rate(pitwall_route_requests_total[10m]))",
+          "expr": "(sum(rate(pitwall_route_requests_total{fallback=\"true\"}[10m])) or vector(0)) / sum(rate(pitwall_route_requests_total[10m]))",
           "legendFormat": "fail-safe",
           "refId": "A"
         }
@@ -504,6 +505,7 @@
             "lineWidth": 2,
             "fillOpacity": 10,
             "showPoints": "never",
+            "axisSoftMax": 0.1,
             "thresholdsStyle": {
               "mode": "line"
             }

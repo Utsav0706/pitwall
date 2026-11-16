@@ -10,7 +10,7 @@ versions its data, trains it, tracks every run, gates it with
 One of four connected projects: [Scout](https://github.com/Utsav0706/scout) (research
 agent), Gearbox (LLM router), Dyno (agent evals) and Pitwall.
 
-**Status:** M7, Gearbox routes through Pitwall with a canary. Monitoring next (M8).
+**Status:** M8, metrics, alerts and a Grafana dashboard. Drift detection next (M9).
 
 ## Run
 
@@ -219,6 +219,31 @@ First run (both sides are v1, so this tests the mechanism, not a model): 40 requ
 of 33% vs 78% on the *same* model show how little 3 requests say: the canary is evidence
 from real traffic, the Dyno gate on all 119 cases makes the decision. With Pitwall
 stopped, Gearbox answered both test requests with M (`pitwall unavailable`).
+
+## Monitoring
+
+The service exports Prometheus metrics on `GET /metrics`: decisions by alias, version,
+tier and fail-safe; routing latency (a histogram around the 600 ms limit); errors by
+reason; which version each alias serves; prompt length. Everything around it is code in
+[`monitoring/`](monitoring/):
+
+- **Prometheus** scrape config and four alerts: service down, routing p95 over 600 ms
+  for 10 minutes (the promotion limit), fail-safes over 5%, errors.
+- **Grafana** datasource and a 10-panel dashboard ("Pitwall router"), provisioned from
+  files and read-only, so it can't drift from what is in git.
+
+```bash
+python scripts/monitoring.py prometheus   # http://127.0.0.1:9090 (official Windows release)
+python scripts/monitoring.py grafana      # http://127.0.0.1:3000
+pitwall traffic --n 200                   # free requests straight to /route
+```
+
+`monitoring/docker-compose.yml` runs the service with both; CI starts it and checks
+that Prometheus scrapes Pitwall, the four rules load and the dashboard exists. A test
+checks that every dashboard and alert query uses a metric the service really exports.
+
+There is no cost-per-request panel: Pitwall's decision runs on the local CPU (about
+GBP 0). The money is spent by Gearbox's answers, which belong on Gearbox's own metrics.
 
 ## Build steps
 

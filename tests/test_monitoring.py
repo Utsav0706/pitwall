@@ -83,3 +83,12 @@ def test_route_requests_show_up_on_metrics(setup) -> None:  # noqa: F811
     assert f"pitwall_route_requests_total{{{labels}}} 1.0" in text
     assert 'pitwall_route_errors_total{reason="model_unavailable"} 1.0' in text
     assert "pitwall_route_latency_seconds_bucket" in text
+
+
+def test_fail_safe_share_is_zero_not_empty_when_nothing_failed() -> None:
+    # The fallback="true" series only exists after a first fail-safe; without the
+    # `or vector(0)` the panel shows "No data" instead of 0%.
+    for panel in dashboard()["panels"]:
+        for t in panel["targets"]:
+            if 'fallback="true"' in t["expr"]:
+                assert "or vector(0)" in t["expr"], panel["title"]
