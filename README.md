@@ -10,7 +10,7 @@ versions its data, trains it, tracks every run, gates it with
 One of four connected projects: [Scout](https://github.com/Utsav0706/scout) (research
 agent), Gearbox (LLM router), Dyno (agent evals) and Pitwall.
 
-**Status:** M5, routing service running. Promotion gate next (M6).
+**Status:** M6, v1 promoted to production through the Dyno gate. Canary next (M7).
 
 ## Run
 
@@ -166,6 +166,38 @@ curl -X POST http://127.0.0.1:8003/route -H "content-type: application/json"    
   local.
 - `GET /health` (503 until Ollama answers and the default model is loaded), `GET /models`.
 - `Dockerfile`: `python:3.12-slim`, no torch, no model inside; CI builds it.
+
+## Promotion and rollback
+
+The rule is code ([`promote.py`](src/pitwall/promote.py), `decide`): a candidate reaches
+production only if
+
+1. **Dyno gate:** on the same 119 test cases, run the same day through the running
+   service, its accuracy (exact tier match) drops by no more than `max_drop_pp` (0) from
+   production's;
+2. its **under-routing** is no higher than production's;
+3. its **p95 routing latency** is within `p95_ms_limit` (600 ms, measured in M4).
+
+With no production model yet, the baseline is the trivial rule "always M".
+
+```bash
+pitwall candidate v1      # label the version to try (no gate)
+pitwall promote           # needs the service running: Dyno calls /route
+# pass  dyno_gate      task_success 48% -> 48% (allowed drop 0.0 pts)
+# pass  under_routing  v1 8.4% vs always-M 8.4%
+# pass  latency_p95    488 ms (limit 600 ms)
+# PROMOTED: v1 vs always-M
+pitwall rollback          # production back to the version the last promotion replaced
+```
+
+Promoting or rolling back moves the `production` alias in the MLflow registry; the
+service picks it up within 30 s. Every decision, pass or fail, is an MLflow run
+(`kind=promotion` / `rollback`) with the numbers behind it, written *before* the alias
+moves. The router answers at temperature 0, so one Dyno attempt per case is enough: two
+runs of v1 gave the same tier on all 119 cases.
+
+v1 is production because it matches always-M on every rule, not because it beats it:
+it is the starting point the rest of the loop (canary, drift, retraining) improves on.
 
 ## Build steps
 
