@@ -10,7 +10,7 @@ versions its data, trains it, tracks every run, gates it with
 One of four connected projects: [Scout](https://github.com/Utsav0706/scout) (research
 agent), Gearbox (LLM router), Dyno (agent evals) and Pitwall.
 
-**Status:** M9, drift detection with an alert. The retraining loop is next (M10).
+**Status:** M10a, production failures become Dyno cases and training data. The retrain loop is next (M10b).
 
 ## Run
 
@@ -285,6 +285,31 @@ pitwall traffic --source test --part old --n 200    # normal
 pitwall traffic --source pool_new --n 200           # new kinds of prompts
 pitwall drift check --window 200                    # exit 3 = drift
 ```
+
+## Failures back into the loop
+
+Bad answers in production become test cases and training data:
+
+- **Feedback:** `POST /feedback {request_id, rating: up|down, comment}` on a routing
+  decision (Gearbox's log reason carries Pitwall's request id, so feedback on a Gearbox
+  answer finds its decision).
+- **Sampled judging:** `pitwall sample-eval --n 10 --yes` answers recent production
+  prompts through Gearbox and judges them with Dyno's calibrated quality judge
+  (PAID: about GBP 0.0035 per prompt, capped).
+- **Import:** `pitwall failures import` turns thumbs-downs and judge failures into new
+  Dyno cases (`dyno import-failures`, deduplicated against earlier imports) and queues
+  their prompts for labelling (`to_label.jsonl`). Both live in `data/production/`,
+  versioned with **DVC, not git**: they are production prompts.
+
+```bash
+pitwall feedback send <request id> down --comment "needed the large model"
+pitwall failures import            # -> data/production/cases/*.yaml + to_label.jsonl
+git add data/production.dvc        # the new data version (its contents stay in DVC)
+```
+
+Checked live: two thumbs-downs on real under-routed decisions (a SimpleQA date
+question, a tricky coding prompt) became two Dyno cases and two queued prompts; a
+second import added nothing.
 
 ## Build steps
 
