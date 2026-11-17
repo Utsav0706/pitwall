@@ -58,6 +58,18 @@ class DriftCheck(Base):
     details: Mapped[str] = mapped_column(Text)  # JSON: per-feature values, task mix
 
 
+class Feedback(Base):
+    """A thumbs up or down on one routing decision (POST /feedback, M10)."""
+
+    __tablename__ = "feedback"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    request_id: Mapped[str] = mapped_column(String(64), index=True)  # route_log.request_id
+    rating: Mapped[str] = mapped_column(String(4))  # up | down
+    comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
 def alembic_config(url: str) -> Config:
     cfg = Config()
     cfg.set_main_option("script_location", str(MIGRATIONS))

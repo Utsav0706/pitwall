@@ -4,6 +4,7 @@
     GET  /health  ready when Ollama answers and the default model is loaded
     GET  /models  which version each reference is serving
     GET  /metrics Prometheus metrics (pitwall.serving.metrics)
+    POST /feedback {"request_id", "rating": "up"|"down", "comment"} on one decision
 
 Run: `pitwall serve` (port 8003). Endpoints are plain `def`: the Ollama call blocks, so
 FastAPI runs each request in its worker threads instead of stalling the event loop.
@@ -15,7 +16,7 @@ import logging
 import time
 import uuid
 from datetime import UTC, datetime
-from typing import Annotated
+from typing import Annotated, Literal
 
 import httpx
 from fastapi import FastAPI, Header, HTTPException
@@ -27,7 +28,7 @@ from sqlalchemy.orm import Session
 from pitwall import __version__
 from pitwall.config import Settings, get_settings
 from pitwall.ollama import OllamaError, OllamaRouter, choose_tier
-from pitwall.serving.db import RouteLog, open_engine
+from pitwall.serving.db import Feedback, RouteLog, open_engine
 from pitwall.serving.metrics import DriftCollector, ServiceMetrics
 from pitwall.serving.models import MlflowResolver, ModelManager, ModelUnavailable
 from pitwall.textformat import render
@@ -40,6 +41,14 @@ class RouteRequest(BaseModel):
     model: str | None = Field(
         default=None, description="production, candidate, or a version such as v1"
     )
+
+
+class FeedbackRequest(BaseModel):
+    # Pitwall's request id: returned by /route, and written into Gearbox's log reason
+    # ("pitwall request <id>"), so feedback on a Gearbox answer finds its decision.
+    request_id: str = Field(min_length=1, max_length=64)
+    rating: Literal["up", "down"]
+    comment: str | None = Field(default=None, max_length=1000)
 
 
 class RouteResponse(BaseModel):
@@ -124,6 +133,22 @@ def create_app(
             latency_ms=latency,
             fallback=answer.no_answer,
         )
+
+    @app.post("/feedback", status_code=201)
+    def feedback(body: FeedbackRequest) -> dict:
+        with Session(engine) as session:
+            if session.get(RouteLog, body.request_id) is None:
+                raise HTTPException(404, f"no routing decision with request id {body.request_id!r}")
+            row = Feedback(
+                created_at=datetime.now(UTC),
+                request_id=body.request_id,
+                rating=body.rating,
+                comment=body.comment,
+            )
+            session.add(row)
+            session.commit()
+            metrics.feedback.labels(body.rating).inc()
+            return {"id": row.id, "request_id": body.request_id, "rating": body.rating}
 
     @app.get("/health")
     def health() -> dict:

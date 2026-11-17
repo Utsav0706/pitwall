@@ -625,3 +625,106 @@ def drift_check(
     typer.echo(f"report {html}; mlflow run {r.info.run_id[:8]}")
     if result.detected:
         raise typer.Exit(3)
+
+
+feedback_app = typer.Typer(help="Thumbs up / down on routing decisions.")
+app.add_typer(feedback_app, name="feedback")
+
+
+@feedback_app.command("send")
+def feedback_send(
+    request_id: Annotated[str, typer.Argument(help="Pitwall request id (from /route)")],
+    rating: Annotated[str, typer.Argument(help="up or down")],
+    comment: Annotated[str | None, typer.Option(help="Why.")] = None,
+) -> None:
+    """POST /feedback to the running service."""
+    import httpx
+
+    body = {"request_id": request_id, "rating": rating, "comment": comment}
+    r = httpx.post(f"{get_settings().pitwall_url}/feedback", json=body, timeout=10)
+    if r.status_code != 201:
+        typer.echo(f"error: {r.status_code} {r.text[:300]}", err=True)
+        raise typer.Exit(1)
+    typer.echo(f"feedback {r.json()['id']}: {rating} on {request_id}")
+
+
+@app.command("sample-eval")
+def sample_eval(
+    n: Annotated[int, typer.Option(help="Recent production prompts to judge.")] = 10,
+    cap_gbp: Annotated[float, typer.Option(help="Refuse above this estimate.")] = 0.10,
+    yes: Annotated[bool, typer.Option("--yes", help="Actually run it (PAID).")] = False,
+) -> None:
+    """Answer a sample of recent production prompts through Gearbox and judge them with
+    Dyno's quality judge; failing answers become failure rows (PAID: Gearbox + judge)."""
+    import time as _time
+
+    from pitwall import loop
+    from pitwall.serving.db import open_engine
+
+    settings = get_settings()
+    prompts = loop.sample_prompts(open_engine(settings.database_url), n)
+    estimate = loop.estimate_gbp(len(prompts))
+    typer.echo(f"{len(prompts)} prompts, estimate GBP {estimate:.3f} (cap {cap_gbp:.2f})")
+    if estimate > cap_gbp:
+        typer.echo("REFUSED: estimate over the cap", err=True)
+        raise typer.Exit(1)
+    if not yes:
+        typer.echo("dry run: add --yes to send it")
+        return
+    stamp = _time.strftime("%Y%m%d-%H%M%S")
+    suite = Path(f"runs/sample-{stamp}.yaml")
+    cases = loop.write_sample_suite(prompts, suite)
+    try:
+        run_id, spent = loop.run_sample(suite, settings, cap_gbp)
+        rows, report = loop.dyno_failures(run_id, cases, settings)
+    except loop.LoopError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(1) from exc
+    out = Path(f"runs/failures-sample-{stamp}.jsonl")
+    loop.write_failures(rows, out)
+    judge = report.get("judge_cost_gbp", 0.0)
+    typer.echo(
+        f"dyno run {run_id}: {len(cases) - len(rows)}/{len(cases)} answers passed the quality "
+        f"judge; GBP {spent:.4f} answers + {judge:.4f} judge -> {len(rows)} failures in {out}"
+    )
+
+
+failures_app = typer.Typer(help="Production failures -> Dyno cases + training queue.")
+app.add_typer(failures_app, name="failures")
+
+
+@failures_app.command("import")
+def failures_import(
+    samples: Annotated[
+        list[Path] | None, typer.Argument(help="runs/failures-sample-*.jsonl files to include")
+    ] = None,
+) -> None:
+    """Thumbs-downs (from the database) + sample-eval failures -> new Dyno cases
+    (dyno import-failures) + the training queue, versioned with DVC."""
+    import time as _time
+
+    from pitwall import loop
+    from pitwall.serving.db import open_engine
+
+    rows = loop.feedback_failures(open_engine(get_settings().database_url))
+    for path in samples or []:
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if line.strip():
+                rows.append(loop.FailureRow(**json.loads(line)))
+    if not rows:
+        typer.echo("no failures to import")
+        return
+    stamp = _time.strftime("%Y%m%d-%H%M%S")
+    combined = Path(f"runs/failures-{stamp}.jsonl")
+    loop.write_failures(rows, combined)
+    try:
+        cases_file, message = loop.import_cases(combined, stamp)
+        queued = loop.queue_for_labelling(rows)
+        version = loop.dvc_add()
+    except loop.LoopError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(1) from exc
+    typer.echo(f"{len(rows)} failures ({combined})")
+    typer.echo(f"dyno: {message}")
+    typer.echo(f"training queue: +{queued} prompts in {loop.QUEUE}")
+    typer.echo(f"data/production is now DVC version {version[:12]} (commit data/production.dvc)")

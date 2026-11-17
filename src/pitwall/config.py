@@ -12,7 +12,7 @@ from functools import lru_cache
 from pathlib import Path
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -46,6 +46,8 @@ class Settings(BaseSettings):
     # How often an alias is looked up again, so a promotion or rollback takes effect
     # without restarting the service.
     alias_refresh_s: float = 30.0
+    # Only for `pitwall sample-eval` (Dyno's quality judge). Put it in .env yourself.
+    anthropic_api_key: SecretStr | None = None
     log_level: str = "WARNING"
 
 

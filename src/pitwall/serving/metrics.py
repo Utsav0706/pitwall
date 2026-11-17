@@ -65,6 +65,12 @@ class ServiceMetrics:
             buckets=PROMPT_BUCKETS,
             registry=self.registry,
         )
+        self.feedback = Counter(
+            "pitwall_feedback",
+            "Thumbs up / down received on routing decisions",
+            ["rating"],
+            registry=self.registry,
+        )
         self._serving: dict[str, str] = {}
 
     def record(
