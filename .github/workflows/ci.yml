@@ -98,7 +98,7 @@ jobs:
           done
           echo "pitwall target: $state"; [ "$state" = "up" ]
           rules=$(curl -s localhost:9090/api/v1/rules | python3 -c "import json,sys; print(sum(len(g['rules']) for g in json.load(sys.stdin)['data']['groups']))")
-          echo "alert rules loaded: $rules"; [ "$rules" = "4" ]
+          echo "alert rules loaded: $rules"; [ "$rules" = "5" ]
           for i in $(seq 1 20); do
             title=$(curl -s localhost:3000/api/dashboards/uid/pitwall | python3 -c "import json,sys; print(json.load(sys.stdin)['dashboard']['title'])" 2>/dev/null) && break
             sleep 3

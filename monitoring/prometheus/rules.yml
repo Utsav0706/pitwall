@@ -33,3 +33,12 @@ groups:
         annotations:
           summary: Pitwall is answering requests with errors
           description: No model for the requested alias, or Ollama is down (see the reason label).
+
+      # Written by `pitwall drift check` (M9), exposed by the service from its database.
+      - alert: PitwallDrift
+        expr: pitwall_drift_detected == 1
+        annotations:
+          summary: Recent prompts no longer look like the production model's training data
+          description: >
+            The latest drift check found {{ $value }} (see pitwall_drift_feature for which
+            features). Retrain on newer data: `pitwall retrain`.

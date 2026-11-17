@@ -508,6 +508,9 @@ def traffic(
     n: Annotated[int, typer.Option(help="Requests to send (prompts repeat if fewer).")] = 100,
     model: Annotated[str | None, typer.Option(help="Model reference (default: service's).")] = None,
     seed: Annotated[int, typer.Option(help="Prompt order.")] = 7,
+    part: Annotated[
+        str | None, typer.Option(help="Only prompts of this part: old or hard.")
+    ] = None,
 ) -> None:
     """Send prompts straight to Pitwall's /route (free: local CPU), e.g. to fill the
     dashboards, or `--source pool_new` to make the traffic drift on purpose (M9)."""
@@ -517,6 +520,11 @@ def traffic(
     import httpx
 
     pairs = data_mod.load_pairs(data_mod.OUT_DIR / f"{source}.jsonl")
+    if part:
+        pairs = [p for p in pairs if p.part == part]
+    if not pairs:
+        typer.echo(f"error: no prompts in {source} with part={part}", err=True)
+        raise typer.Exit(1)
     texts = [data_mod.prompt_text(p) for p in pairs]
     rng = _random.Random(seed)
     tiers: Counter[str] = Counter()
@@ -535,3 +543,85 @@ def traffic(
                 errors += 1
             if i % 50 == 0 or i == n:
                 typer.echo(f"  {i}/{n}  tiers {dict(tiers)}  errors {errors}")
+
+
+drift_app = typer.Typer(help="Drift: are recent prompts still like the training data?")
+app.add_typer(drift_app, name="drift")
+
+
+@drift_app.command("check")
+def drift_check(
+    window: Annotated[int, typer.Option(help="The last N prompts the model routed.")] = 200,
+    model: Annotated[
+        str, typer.Option(help="Model reference whose traffic to check.")
+    ] = "production",
+) -> None:
+    """Compare recent prompts with the model's training prompts (length, task mix,
+    embeddings). Exit code 3 when drift is detected, so a script can act on it."""
+    import mlflow
+
+    from pitwall import baseline, drift, tracking
+    from pitwall.config import load_config
+    from pitwall.finetune import bundle as bundle_mod
+    from pitwall.serving.db import open_engine
+    from pitwall.serving.models import MlflowResolver, ModelUnavailable
+
+    settings = get_settings()
+    resolver = MlflowResolver()
+    try:
+        resolved = resolver.resolve(model)
+    except ModelUnavailable as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(1) from exc
+    directory = settings.model_cache_dir / f"v{resolved.version}" / "bundle"
+    if not (directory / bundle_mod.MANIFEST).exists():
+        directory = resolver.fetch(resolved, settings.model_cache_dir / f"v{resolved.version}")
+    manifest = bundle_mod.load_manifest(directory)
+    train_file = Path(manifest.train_file)
+    if data_mod.sha256_file(train_file) != manifest.train_sha256:
+        typer.echo(
+            f"error: {train_file} is not the file v{resolved.version} was trained on", err=True
+        )
+        raise typer.Exit(1)
+
+    engine = open_engine(settings.database_url)
+    current = drift.current_window(engine, model, window)
+    if len(current) < window:
+        typer.echo(f"note: only {len(current)} prompts in the log for {model!r} (asked {window})")
+    reference = data_mod.load_pairs(train_file)
+    ref_texts = [data_mod.prompt_text(p) for p in reference]
+    embedder = baseline.SentenceTransformerEmbedder()
+    try:
+        result = drift.check(
+            ref_texts,
+            baseline.embed_cached(ref_texts, embedder),
+            [p.task_type for p in reference],
+            current,
+            embedder.encode(current),
+            load_config().drift.threshold,
+        )
+    except ValueError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(1) from exc
+    typer.echo(
+        f"v{resolved.version} ({manifest.name}): {train_file.name} "
+        f"vs the last {len(current)} {model} prompts"
+    )
+    typer.echo(drift.render(result))
+
+    html = drift.report_path()
+    html.parent.mkdir(parents=True, exist_ok=True)
+    result.snapshot.save_html(str(html))
+    reference_label = f"v{resolved.version} {train_file.name}"
+    drift.save_record(engine, result, model, reference_label)
+    with tracking.run(f"drift {model}", "drift", tags={"reference": reference_label}) as r:
+        mlflow.log_metrics(
+            {"share": result.share, "detected": float(result.detected)}
+            | {f"{f.name}.value": f.value for f in result.features}
+            | {f"{f.name}.drifted": float(f.drifted) for f in result.features}
+        )
+        mlflow.log_dict(result.to_record(), "drift.json")
+        mlflow.log_artifact(str(html))
+    typer.echo(f"report {html}; mlflow run {r.info.run_id[:8]}")
+    if result.detected:
+        raise typer.Exit(3)

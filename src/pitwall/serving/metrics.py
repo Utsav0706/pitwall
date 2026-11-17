@@ -8,6 +8,8 @@
 - pitwall_model_info{model_ref, version}: 1 for the version each reference serves now.
 - pitwall_prompt_chars: prompt length; it drives CPU latency and is the cheapest early
   sign of drift.
+- pitwall_drift_share / _detected / _feature{feature} / _check_timestamp_seconds: the
+  latest `pitwall drift check` (M9), read from the database at scrape time.
 
 No cost metric: the routing decision runs on the local CPU (~GBP 0). The money is spent
 by Gearbox's answers, which belong on Gearbox's own metrics.
@@ -17,7 +19,13 @@ Each app gets its own registry, so tests can build many apps in one process.
 
 from __future__ import annotations
 
+import json
+from collections.abc import Iterator
+from datetime import UTC
+from typing import Any
+
 from prometheus_client import CollectorRegistry, Counter, Gauge, Histogram
+from prometheus_client.core import GaugeMetricFamily
 
 LATENCY_BUCKETS = (0.025, 0.05, 0.1, 0.2, 0.3, 0.45, 0.6, 0.8, 1.0, 1.5, 2.5, 5.0)
 PROMPT_BUCKETS = (50, 100, 200, 350, 500, 1000, 2000, 3000, 5000)
@@ -72,3 +80,49 @@ class ServiceMetrics:
                 self.model_info.remove(ref, previous)
             self.model_info.labels(ref, v).set(1)
             self._serving[ref] = v
+
+
+class DriftCollector:
+    """Reads the latest `pitwall drift check` from the database at scrape time, so the
+    drift verdict lives in Prometheus (alert PitwallDrift) and Grafana. Nothing is
+    exported before the first check: no data, rather than a made-up 0."""
+
+    def __init__(self, engine: Any) -> None:
+        self._engine = engine
+
+    def collect(self) -> Iterator[GaugeMetricFamily]:
+        from sqlalchemy import select
+        from sqlalchemy.orm import Session
+
+        from pitwall.serving.db import DriftCheck
+
+        with Session(self._engine) as session:
+            row = session.scalars(
+                select(DriftCheck).order_by(DriftCheck.created_at.desc()).limit(1)
+            ).first()
+        if row is None:
+            return
+        yield GaugeMetricFamily(
+            "pitwall_drift_share",
+            "Share of drifted features in the latest drift check",
+            value=row.share,
+        )
+        yield GaugeMetricFamily(
+            "pitwall_drift_detected",
+            "1 if the latest drift check detected drift",
+            value=float(row.detected),
+        )
+        yield GaugeMetricFamily(
+            "pitwall_drift_check_timestamp_seconds",
+            "When the latest drift check ran",
+            # SQLite gives back naive datetimes; they were stored in UTC.
+            value=row.created_at.replace(tzinfo=row.created_at.tzinfo or UTC).timestamp(),
+        )
+        per_feature = GaugeMetricFamily(
+            "pitwall_drift_feature",
+            "1 if this feature drifted in the latest check",
+            labels=["feature"],
+        )
+        for f in json.loads(row.details)["features"]:
+            per_feature.add_metric([f["name"]], float(f["drifted"]))
+        yield per_feature

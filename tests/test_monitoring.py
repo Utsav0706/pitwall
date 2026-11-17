@@ -14,10 +14,18 @@ ROOT = Path(__file__).resolve().parents[1]
 METRIC = re.compile(r"\bpitwall_[a-z_]+")
 
 
-def exported_names() -> set[str]:
+def exported_names(tmp_path: Path) -> set[str]:
+    from pitwall import drift
+    from pitwall.serving.db import open_engine
+    from pitwall.serving.metrics import DriftCollector
+
     m = ServiceMetrics()
     m.record("production", 1, "M", False, 0.1, 120)
     m.errors.labels("ollama").inc()
+    engine = open_engine(f"sqlite:///{(tmp_path / 'm.db').as_posix()}")
+    m.registry.register(DriftCollector(engine))
+    feature = drift.FeatureDrift("embeddings", "ROC AUC", 0.5, 0.7, False)
+    drift.save_record(engine, drift.DriftResult([feature], 0.0, False, 1, 1), "production", "r")
     text = generate_latest(m.registry).decode()
     return {
         line.split("{")[0].split(" ")[0]
@@ -32,8 +40,8 @@ def dashboard() -> dict:
     )
 
 
-def test_every_dashboard_and_alert_query_uses_real_metrics() -> None:
-    names = exported_names()
+def test_every_dashboard_and_alert_query_uses_real_metrics(tmp_path: Path) -> None:
+    names = exported_names(tmp_path)
     exprs = [t["expr"] for p in dashboard()["panels"] for t in p["targets"]]
     rules = yaml.safe_load((ROOT / "monitoring/prometheus/rules.yml").read_text(encoding="utf-8"))
     exprs += [r["expr"] for g in rules["groups"] for r in g["rules"]]

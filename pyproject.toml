@@ -54,6 +54,8 @@ dev = [
     "ruff>=0.8",
     "scikit-learn>=1.5",  # baseline tests use a fake embedder, so no torch in CI
     "mlflow>=3.0",  # tracking tests log to a temporary SQLite store
+    "evidently>=0.7",  # drift tests (M9)
+    "pandas>=2.2,<3",  # Evidently 0.7.23 fails to import on pandas 3
     "dyno @ git+https://github.com/Utsav0706/dyno@bf089379bc6fe549d514b809f4b1bad534f599a0",
 ]
 

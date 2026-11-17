@@ -1,4 +1,4 @@
-"""The route log: one row per routing decision.
+"""The route log (one row per routing decision) and drift check results.
 
 Kept because later steps need it: drift detection (M9) embeds the prompts, and failing
 requests become new training data (M10). The prompt text is stored as the model saw it
@@ -41,6 +41,21 @@ class RouteLog(Base):
     prompt_chars: Mapped[int] = mapped_column(Integer)  # before the cut
     prompt_cut: Mapped[bool] = mapped_column(Boolean)
     prompt: Mapped[str] = mapped_column(Text)  # as the model saw it
+
+
+class DriftCheck(Base):
+    """One `pitwall drift check` result (M9); the service exposes the latest as gauges."""
+
+    __tablename__ = "drift_checks"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    model_ref: Mapped[str] = mapped_column(String(32))
+    reference: Mapped[str] = mapped_column(String(200))  # bundle + its training file
+    window_n: Mapped[int] = mapped_column(Integer)
+    share: Mapped[float] = mapped_column(Double)  # share of drifted features
+    detected: Mapped[bool] = mapped_column(Boolean)
+    details: Mapped[str] = mapped_column(Text)  # JSON: per-feature values, task mix
 
 
 def alembic_config(url: str) -> Config:

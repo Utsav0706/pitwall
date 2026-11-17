@@ -28,7 +28,7 @@ from pitwall import __version__
 from pitwall.config import Settings, get_settings
 from pitwall.ollama import OllamaError, OllamaRouter, choose_tier
 from pitwall.serving.db import RouteLog, open_engine
-from pitwall.serving.metrics import ServiceMetrics
+from pitwall.serving.metrics import DriftCollector, ServiceMetrics
 from pitwall.serving.models import MlflowResolver, ModelManager, ModelUnavailable
 from pitwall.textformat import render
 
@@ -66,6 +66,7 @@ def create_app(
     engine = engine or open_engine(settings.database_url)
     app = FastAPI(title="Pitwall router", version=__version__)
     metrics = ServiceMetrics()
+    metrics.registry.register(DriftCollector(engine))
     app.mount("/metrics", make_asgi_app(registry=metrics.registry))
     app.state.metrics = metrics
 
