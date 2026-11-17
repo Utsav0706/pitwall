@@ -10,7 +10,7 @@ versions its data, trains it, tracks every run, gates it with
 One of four connected projects: [Scout](https://github.com/Utsav0706/scout) (research
 agent), Gearbox (LLM router), Dyno (agent evals) and Pitwall.
 
-**Status:** M8, metrics, alerts and a Grafana dashboard. Drift detection next (M9).
+**Status:** M9, drift detection with an alert. The retraining loop is next (M10).
 
 ## Run
 
@@ -244,6 +244,45 @@ checks that every dashboard and alert query uses a metric the service really exp
 
 There is no cost-per-request panel: Pitwall's decision runs on the local CPU (about
 GBP 0). The money is spent by Gearbox's answers, which belong on Gearbox's own metrics.
+
+## Drift
+
+`pitwall drift check` asks whether the prompts the production model sees now still
+look like the ones it was trained on. Reference: the production bundle's training file.
+Current: the last N prompts that model routed (the route log), each counted once.
+Three Evidently checks, with the test methods pinned:
+
+| Feature | Test | Drifted when |
+|---|---|---|
+| Prompt length | Kolmogorov-Smirnov | p < 0.05 |
+| Task mix (task type predicted from embeddings, nearest training centroid) | chi-square | p < 0.05 |
+| Meaning (bge-small embeddings) | Evidently's domain classifier | ROC AUC > 0.7 |
+
+Drift is detected when at least half the features drift (`drift.threshold`). The
+command writes Evidently's HTML report and an MLflow run, stores the result (the
+service then exports `pitwall_drift_*`, alert `PitwallDrift`, two Grafana panels) and
+exits with code 3, so a script can start a retrain.
+
+Checked live, with free traffic straight to the service:
+
+| Traffic (last 200 requests) | Length p | Task mix p | Embedding AUC | Verdict |
+|---|---|---|---|---|
+| General test prompts (`--part old`), 80 distinct | 0.91 | 0.64 | 0.45 | no drift |
+| SimpleQA / AIME / MMLU-Pro (`pool_new`), 96 distinct | 0.005 | 0.0000 | 0.90 | **drift** (3/3), alert fired |
+
+On the new traffic the task mix moved from roughly a quarter each to research 51%,
+reasoning 36%, coding 0%, while the router still sent every prompt to M: its outputs
+did not change, its inputs did. That is why the inputs are watched.
+
+Prompts are compared once each: the first run counted repeats (the traffic sampler
+reuses the 85 general test prompts) and the embedding classifier, seeing the same
+prompt on both sides of its own train/test split, reported AUC 0.81 on normal traffic.
+
+```bash
+pitwall traffic --source test --part old --n 200    # normal
+pitwall traffic --source pool_new --n 200           # new kinds of prompts
+pitwall drift check --window 200                    # exit 3 = drift
+```
 
 ## Build steps
 

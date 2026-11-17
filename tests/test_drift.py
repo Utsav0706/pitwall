@@ -128,3 +128,20 @@ def test_latest_check_becomes_gauges(tmp_path: Path) -> None:
     assert abs(stamp - datetime.now(UTC).timestamp()) < 120  # stored as UTC, read as UTC
     record = json.loads(json.dumps(result.to_record()))
     assert record["features"][2]["name"] == "embeddings"
+
+
+def test_repeated_prompts_are_counted_once() -> None:
+    assert drift.distinct(["a", "b", "a", "c", "b"]) == ["a", "b", "c"]
+
+
+def test_repeats_alone_do_not_look_like_drift() -> None:
+    # Same prompts as the reference, but each repeated: once deduplicated, no drift.
+    rng = np.random.default_rng(5)
+    ref = population(365, rng)
+    cur_texts = [f"{t}{i}" for i, t in enumerate(ref[0][:100])]
+    idx = list(range(100)) * 2
+    repeated = [cur_texts[i] for i in idx]
+    unique = drift.distinct(repeated)
+    emb = ref[1][[cur_texts.index(u) for u in unique]]
+    result = drift.check(ref[0], ref[1], ref[2], [u.rstrip("0123456789") for u in unique], emb, 0.5)
+    assert not result.detected

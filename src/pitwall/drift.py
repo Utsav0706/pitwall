@@ -200,6 +200,13 @@ def save_record(engine: Any, result: DriftResult, model_ref: str, reference: str
         return int(row.id)
 
 
+def distinct(prompts: list[str]) -> list[str]:
+    """Each prompt once, first occurrence kept. Drift is about which kinds of prompts
+    arrive, not how often one repeats; and repeats would leak across the embedding
+    classifier's own train/test split (it remembers them), inflating its ROC AUC."""
+    return list(dict.fromkeys(prompts))
+
+
 def current_window(engine: Any, model_ref: str, n: int) -> list[str]:
     """The last n prompts the given reference routed (newest first in the log)."""
     from sqlalchemy import select

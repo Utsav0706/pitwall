@@ -585,9 +585,9 @@ def drift_check(
         raise typer.Exit(1)
 
     engine = open_engine(settings.database_url)
-    current = drift.current_window(engine, model, window)
-    if len(current) < window:
-        typer.echo(f"note: only {len(current)} prompts in the log for {model!r} (asked {window})")
+    logged = drift.current_window(engine, model, window)
+    current = drift.distinct(logged)
+    typer.echo(f"window: last {len(logged)} {model} requests, {len(current)} distinct prompts")
     reference = data_mod.load_pairs(train_file)
     ref_texts = [data_mod.prompt_text(p) for p in reference]
     embedder = baseline.SentenceTransformerEmbedder()
@@ -605,7 +605,7 @@ def drift_check(
         raise typer.Exit(1) from exc
     typer.echo(
         f"v{resolved.version} ({manifest.name}): {train_file.name} "
-        f"vs the last {len(current)} {model} prompts"
+        f"vs {len(current)} distinct recent {model} prompts"
     )
     typer.echo(drift.render(result))
 
