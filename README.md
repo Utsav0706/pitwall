@@ -232,6 +232,8 @@ reason; which version each alias serves; prompt length. Everything around it is 
 - **Grafana** datasource and a 10-panel dashboard ("Pitwall router"), provisioned from
   files and read-only, so it can't drift from what is in git.
 
+![Grafana "Pitwall router" dashboard with live routing traffic](docs/images/grafana_dashboard.png)
+
 ```bash
 python scripts/monitoring.py prometheus   # http://127.0.0.1:9090 (official Windows release)
 python scripts/monitoring.py grafana      # http://127.0.0.1:3000
