@@ -241,5 +241,7 @@ def test_notebook_removes_colabs_old_torchao() -> None:
 
 def test_notebook_stops_without_a_gpu() -> None:
     nb = json.loads((ROOT / "notebooks" / "train_router_colab.ipynb").read_text(encoding="utf-8"))
-    first = "".join(next(c["source"] for c in nb["cells"] if c["cell_type"] == "code"))
-    assert "nvidia-smi" in first and "assert _exit_code == 0" in first
+    code = ["".join(c["source"]) for c in nb["cells"] if c["cell_type"] == "code"]
+    gpu = next(i for i, c in enumerate(code) if "nvidia-smi" in c)
+    train = next(i for i, c in enumerate(code) if "pitwall.finetune.train" in c)
+    assert gpu < train and "assert _exit_code == 0" in code[gpu]

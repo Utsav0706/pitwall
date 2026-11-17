@@ -230,7 +230,9 @@ def log_decision(kind: str, record: dict[str, Any], metrics: dict[str, float]) -
         return active.info.run_id
 
 
-def promote(ref: str, settings: Settings, rules: PromotionRules) -> Result:
+def promote(ref: str, settings: Settings, rules: PromotionRules, dry_run: bool = False) -> Result:
+    """Gate `ref` against production; move the alias on a pass unless dry_run (the
+    gate-only step before a canary: gate passes -> canary -> promote)."""
     c = _client()
     candidate_version = parse_ref(c, ref)
     production_version = alias_version(c, PRODUCTION)
@@ -250,7 +252,9 @@ def promote(ref: str, settings: Settings, rules: PromotionRules) -> Result:
 
     decision = decide(candidate, baseline, gate_outcome, rules)
     record = {
-        "decision": "promoted" if decision.promote else "rejected",
+        "decision": ("would promote" if dry_run else "promoted")
+        if decision.promote
+        else "rejected",
         "from": baseline.label,
         "to": candidate.label,
         "reason": decision.reason,
@@ -267,7 +271,7 @@ def promote(ref: str, settings: Settings, rules: PromotionRules) -> Result:
     }
     # Record first, then act: a promotion must never happen without its record.
     mlflow_run = log_decision("promotion", record, metrics)
-    if decision.promote:
+    if decision.promote and not dry_run:
         c.set_registered_model_alias(REGISTERED_MODEL, PRODUCTION, str(candidate_version))
     return Result(
         decision,

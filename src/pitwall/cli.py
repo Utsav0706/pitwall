@@ -377,6 +377,9 @@ def promote(
     ref: Annotated[
         str, typer.Argument(help="Version to promote: candidate (alias) or vN")
     ] = "candidate",
+    dry_run: Annotated[
+        bool, typer.Option("--dry-run", help="Run the gate and log it; don't move the alias.")
+    ] = False,
 ) -> None:
     """Gate a candidate against production (Dyno + under-routing + p95); promote on a pass.
     Needs the service running (pitwall serve) so Dyno can call /route."""
@@ -384,13 +387,16 @@ def promote(
     from pitwall.config import load_config
 
     try:
-        result = p.promote(ref, get_settings(), load_config().promotion)
+        result = p.promote(ref, get_settings(), load_config().promotion, dry_run)
     except p.PromotionError as exc:
         typer.echo(f"error: {exc}", err=True)
         raise typer.Exit(1) from exc
     for check in result.decision.checks:
         typer.echo(f"{'pass' if check.passed else 'FAIL'}  {check.name:<14} {check.detail}")
-    verdict = "PROMOTED" if result.decision.promote else "REJECTED"
+    if result.decision.promote:
+        verdict = "WOULD PROMOTE (dry run)" if dry_run else "PROMOTED"
+    else:
+        verdict = "REJECTED"
     typer.echo(
         f"{verdict}: v{result.candidate_version} vs {result.baseline} "
         f"(dyno runs {result.dyno_runs['candidate']} / {result.dyno_runs['baseline']}, "
@@ -728,3 +734,61 @@ def failures_import(
     typer.echo(f"dyno: {message}")
     typer.echo(f"training queue: +{queued} prompts in {loop.QUEUE}")
     typer.echo(f"data/production is now DVC version {version[:12]} (commit data/production.dvc)")
+
+
+retrain_app = typer.Typer(help="New data -> Colab training -> gate -> canary -> promote.")
+app.add_typer(retrain_app, name="retrain")
+
+
+@retrain_app.command("prepare")
+def retrain_prepare(
+    train: Annotated[str, typer.Option(help="Training file in data/derived.")] = "train_full",
+) -> None:
+    """Check the training data and print the Colab steps."""
+    from pitwall import retrain
+
+    path = data_mod.OUT_DIR / f"{train}.jsonl"
+    if not path.exists():
+        typer.echo(f"error: {path} not found; run `dvc repro`", err=True)
+        raise typer.Exit(1)
+    pairs = data_mod.load_pairs(path)
+    from collections import Counter
+
+    labels = Counter(p.label for p in pairs)
+    parts = Counter(p.part for p in pairs)
+    typer.echo(f"{path}: {len(pairs)} prompts, labels {dict(labels)}, parts {dict(parts)}")
+    typer.echo(f"sha256 {data_mod.sha256_file(path)[:12]} (the bundle records it)")
+    typer.echo("\nOn Colab (free T4, ~20 min):")
+    typer.echo(f"  1. open {retrain.COLAB_URL}")
+    typer.echo(f'  2. first code cell: TRAIN = "{train}"')
+    typer.echo("  3. Runtime -> Change runtime type -> T4 GPU, then Run all")
+    typer.echo(f"  4. unzip ft-{train}.zip into bundles/")
+    typer.echo(f"\nThen: pitwall retrain finish bundles/ft-{train}")
+
+
+@retrain_app.command("finish")
+def retrain_finish(
+    bundle: Annotated[Path, typer.Argument(help="The new bundle, e.g. bundles/ft-train_full")],
+    canary_n: Annotated[
+        int, typer.Option(help="Canary requests through Gearbox (PAID; 0 = skip).")
+    ] = 40,
+    cap_gbp: Annotated[float, typer.Option(help="Canary spending cap.")] = 0.10,
+    yes: Annotated[bool, typer.Option("--yes", help="Allow the paid canary.")] = False,
+) -> None:
+    """Evaluate -> register -> candidate -> gate (dry run) -> canary -> promote.
+    Needs the service running; the canary also needs Gearbox in canary mode."""
+    from pitwall import retrain
+
+    if canary_n > 0 and not yes:
+        typer.echo(
+            f"the canary sends {canary_n} requests through Gearbox (PAID, cap GBP "
+            f"{cap_gbp}); add --yes, or --canary-n 0 to skip it",
+            err=True,
+        )
+        raise typer.Exit(1)
+    try:
+        version = retrain.finish(bundle, canary_n, cap_gbp, typer.echo)
+    except retrain.RetrainError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(1) from exc
+    typer.echo(f"\n{version} is production")
