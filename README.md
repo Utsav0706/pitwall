@@ -309,7 +309,11 @@ git add data/production.dvc        # the new data version (its contents stay in 
 
 Checked live: two thumbs-downs on real under-routed decisions (a SimpleQA date
 question, a tricky coding prompt) became two Dyno cases and two queued prompts; a
-second import added nothing.
+second import added nothing. Then `sample-eval` on 10 recent production prompts,
+answered through Gearbox routed by Pitwall: 8/10 passed the quality judge, for
+**GBP 0.0058** (0.0034 answers + 0.0024 judging). Both failures were the new kind of
+prompt the drift check had flagged (a SimpleQA fact question and an MMLU-Pro question,
+routed to M and answered wrongly); importing them added 2 more cases and queue entries.
 
 ## Build steps
 
