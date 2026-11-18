@@ -144,7 +144,7 @@ exits with code 3, so a script can start a retrain.
 ## 5. Failures back into training
 
 ```mermaid
-flowchart LR
+flowchart TD
   thumbs["POST /feedback<br/>(thumbs-down)"] --> rows["Failure rows<br/>(Dyno's JSONL format)"]
   sample["pitwall sample-eval<br/>Gearbox answers, Dyno's quality judge"] --> rows
   rows --> cases["dyno import-failures<br/>-> new Dyno cases"]

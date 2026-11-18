@@ -48,7 +48,7 @@ v2's lower p95 is the same model size measured on a less busy machine.
 ## The loop, run end to end
 
 ```mermaid
-flowchart LR
+flowchart TD
   data["Data<br/>(DVC)"] --> train["Fine-tune<br/>(Colab T4)"]
   train --> registry["Registry<br/>(MLflow)"]
   registry --> gate{"Dyno gate<br/>+ rules"}
@@ -86,7 +86,7 @@ of prompt.
 ## How it works
 
 ```mermaid
-flowchart LR
+flowchart TD
   client["Client"] --> gearbox["Gearbox<br/>router v4"]
   gearbox -- "POST /route" --> service["Pitwall service<br/>(FastAPI :8003)"]
   service -- "raw prompt, 1 token" --> ollama["Ollama on CPU<br/>Q4 GGUF"]
