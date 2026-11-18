@@ -42,3 +42,27 @@ groups:
           description: >
             The latest drift check found {{ $value }} (see pitwall_drift_feature for which
             features). Retrain on newer data: `pitwall retrain`.
+
+  - name: gearbox
+    rules:
+      - alert: GearboxDown
+        expr: up{job="gearbox"} == 0
+        for: 1m
+        annotations:
+          summary: Gearbox is not answering
+          description: Clients get no answers while it is down.
+
+      - alert: GearboxErrors
+        expr: >
+          sum(rate(gearbox_requests_total{status="error"}[10m]))
+          / sum(rate(gearbox_requests_total[10m])) > 0.05
+        for: 10m
+        annotations:
+          summary: Over 5% of Gearbox requests failed
+          description: Every allowed tier failed for these requests; check the model providers and Ollama.
+
+      - alert: GearboxBudget
+        expr: gearbox_month_spend_gbp / gearbox_monthly_budget_gbp > 0.8
+        annotations:
+          summary: Gearbox has spent over 80% of this month's budget
+          description: At 100% Gearbox sends every request to the free local tier until the month ends.

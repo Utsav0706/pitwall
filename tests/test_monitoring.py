@@ -100,3 +100,30 @@ def test_fail_safe_share_is_zero_not_empty_when_nothing_failed() -> None:
         for t in panel["targets"]:
             if 'fallback="true"' in t["expr"]:
                 assert "or vector(0)" in t["expr"], panel["title"]
+
+
+def test_gearbox_dashboard_and_alerts_use_gearbox_metric_contract() -> None:
+    contract = {
+        line.strip()
+        for line in (ROOT / "monitoring/gearbox_metrics.txt")
+        .read_text(encoding="utf-8")
+        .splitlines()
+        if line.strip() and not line.startswith("#")
+    }
+    board = json.loads(
+        (ROOT / "monitoring/grafana/dashboards/gearbox.json").read_text(encoding="utf-8")
+    )
+    exprs = [t["expr"] for p in board["panels"] for t in p["targets"]]
+    rules = yaml.safe_load((ROOT / "monitoring/prometheus/rules.yml").read_text(encoding="utf-8"))
+    exprs += [r["expr"] for g in rules["groups"] if g["name"] == "gearbox" for r in g["rules"]]
+    used = {name for e in exprs for name in re.findall(r"\bgearbox_[a-z_]+", e)}
+    assert used and used <= contract, f"not exported by Gearbox: {used - contract}"
+    assert {p["datasource"]["uid"] for p in board["panels"]} == {"prometheus"}
+
+
+def test_dashboards_have_distinct_uids() -> None:
+    uids = [
+        json.loads(p.read_text(encoding="utf-8"))["uid"]
+        for p in (ROOT / "monitoring/grafana/dashboards").glob("*.json")
+    ]
+    assert sorted(uids) == ["gearbox", "pitwall"]

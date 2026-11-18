@@ -12,3 +12,9 @@ scrape_configs:
     metrics_path: /metrics/
     static_configs:
       - targets: ["127.0.0.1:8003"]
+
+  # Gearbox (the router in front of the models): requests, cost, latency, budget.
+  - job_name: gearbox
+    metrics_path: /metrics/
+    static_configs:
+      - targets: ["127.0.0.1:8002"]

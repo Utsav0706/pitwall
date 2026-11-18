@@ -1,0 +1,13 @@
+# The metric names Gearbox exports on GET /metrics (its service/metrics.py). Pitwall's
+# Gearbox dashboard and alerts may only use these; tests/test_monitoring.py checks it.
+gearbox_requests_total
+gearbox_cost_gbp_total
+gearbox_tokens_total
+gearbox_request_latency_seconds_bucket
+gearbox_request_latency_seconds_count
+gearbox_request_latency_seconds_sum
+gearbox_route_latency_seconds_bucket
+gearbox_route_latency_seconds_count
+gearbox_route_latency_seconds_sum
+gearbox_month_spend_gbp
+gearbox_monthly_budget_gbp
