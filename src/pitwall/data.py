@@ -7,7 +7,7 @@ Output (data/derived/), each row a chat-format instruction pair whose answer is 
 - test.jsonl         Gearbox's test split. The same for every model, always.
 - train_old.jsonl    train rows from the general sources: what the first model learns.
 - pool_new.jsonl     train rows from the hard sources (SimpleQA, AIME, MMLU-Pro): the
-                     "new traffic" of the drift demo, already labelled by Gearbox.
+                     "new traffic" of the drift simulation, already labelled by Gearbox.
 - train_full.jsonl   old + new: what the retrained model learns.
 - manifest.json      counts, sha256 of every file, the source and the prompt hash.
 

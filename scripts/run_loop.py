@@ -1,4 +1,4 @@
-"""The whole loop, step by step, for a recording:
+"""Run the whole loop in order, one command after another:
 
   1. normal traffic          -> drift check: no drift
   2. a new kind of traffic   -> drift check: DRIFT (alert PitwallDrift fires)
@@ -7,7 +7,7 @@
   5. rollback                -> production back on the previous version
   6. promote again           -> the gate passes again; the new model is back
 
-    python scripts/loop_demo.py --bundle bundles/ft-train_full --yes
+    python scripts/run_loop.py --bundle bundles/ft-train_full --yes
 
 Needs: Pitwall's service, MLflow and Ollama; Gearbox in canary mode for step 3
 (scripts/gearbox_canary.py); Prometheus + Grafana to watch it. Step 3's canary is PAID
