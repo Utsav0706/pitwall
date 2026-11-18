@@ -178,6 +178,8 @@ def run_dyno(agent: str, model_ref: str | None, settings: Settings) -> str:
         [dyno_executable(), "run", str(SUITE), "--agent", agent],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         env=env,
     )
     match = re.search(r"^run (\w+):", result.stdout, re.MULTILINE)

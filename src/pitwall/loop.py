@@ -144,7 +144,12 @@ def run_sample(suite: Path, settings: Settings, cap_gbp: float) -> tuple[str, fl
         "JUDGE_BUDGET_GBP": f"{cap_gbp:.4f}",  # Dyno stops judging past this
     }
     result = subprocess.run(
-        [dyno_executable(), "run", str(suite)], capture_output=True, text=True, env=env
+        [dyno_executable(), "run", str(suite)],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        env=env,
     )
     match = re.search(r"^run (\w+):.*?GBP ([0-9.]+)", result.stdout, re.MULTILINE)
     if result.returncode != 0 or not match:
@@ -162,6 +167,8 @@ def dyno_failures(
         [dyno_executable(), "report", run_id, "--format", "json"],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         env={**os.environ, "DATABASE_URL": settings.dyno_database_url},
     )
     if result.returncode != 0:
@@ -199,7 +206,7 @@ def import_cases(failures_file: Path, stamp: str) -> tuple[Path | None, str]:
     cmd = [dyno_executable(), "import-failures", str(failures_file), "--out", str(out)]
     for path in earlier:
         cmd += ["--existing", str(path)]
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
     if result.returncode != 0:
         raise LoopError(f"dyno import-failures failed: {(result.stderr or result.stdout)[-600:]}")
     message = result.stdout.strip()
@@ -244,7 +251,13 @@ def queue_for_labelling(rows: list[FailureRow], queue: Path = QUEUE) -> int:
 
 def dvc_add(path: Path = PRODUCTION_DIR) -> str:
     """Version data/production/ with DVC; returns the new hash from its .dvc file."""
-    result = subprocess.run(["dvc", "add", str(path)], capture_output=True, text=True)
+    result = subprocess.run(
+        ["dvc", "add", str(path)],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
     if result.returncode != 0:
         raise LoopError(f"dvc add failed: {(result.stderr or result.stdout)[-400:]}")
     meta = yaml.safe_load(Path(f"{path}.dvc").read_text(encoding="utf-8"))

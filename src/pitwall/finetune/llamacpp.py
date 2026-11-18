@@ -78,7 +78,12 @@ def _clone(dest: Path) -> Path:
             check=True,
         )
     head = subprocess.run(
-        ["git", "-C", str(source), "rev-parse", "HEAD"], capture_output=True, text=True, check=True
+        ["git", "-C", str(source), "rev-parse", "HEAD"],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=True,
     ).stdout.strip()
     if head != COMMIT:
         raise LlamaCppError(f"llama.cpp {TAG} is at {head}, expected {COMMIT}")

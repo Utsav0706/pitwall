@@ -93,3 +93,16 @@ def test_notebook_trains_the_file_named_in_its_parameters_cell() -> None:
     train_cell = next(c for c in code if "pitwall.finetune.train" in c)
     assert "{TRAIN}.jsonl" in train_cell and "bundles/{NAME}" in train_cell
     assert not any("train_old.jsonl" in c for c in code)
+
+
+def test_child_output_in_utf8_does_not_crash_the_reader(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The first real `retrain finish` crashed reading a child's UTF-8 output with the
+    # Windows code page (byte 0x8f). The runner reads UTF-8 and replaces what it can't.
+    import sys
+
+    monkeypatch.setattr(retrain, "pitwall_executable", lambda: sys.executable)
+    result = retrain.default_runner(
+        ["-c", "import sys; sys.stdout.buffer.write('\u23f1 run abc: \U0001f3c3 ok \x8f'.encode())"]
+    )
+    assert result.returncode == 0
+    assert "run abc:" in result.stdout

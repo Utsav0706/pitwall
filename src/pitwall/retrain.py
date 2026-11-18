@@ -77,7 +77,13 @@ Runner = Callable[[list[str]], subprocess.CompletedProcess[str]]
 
 
 def default_runner(args: list[str]) -> subprocess.CompletedProcess[str]:
-    return subprocess.run([pitwall_executable(), *args], capture_output=True, text=True)
+    return subprocess.run(
+        [pitwall_executable(), *args],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
 
 
 def finish(

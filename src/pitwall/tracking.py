@@ -40,13 +40,20 @@ def data_version(lock: Path = DVC_LOCK, out: str = "data/derived") -> str:
 def git_state() -> tuple[str, bool]:
     try:
         commit = subprocess.run(
-            ["git", "rev-parse", "HEAD"], capture_output=True, text=True, check=True
+            ["git", "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=True,
         ).stdout.strip()
         dirty = bool(
             subprocess.run(
                 ["git", "status", "--porcelain", "--untracked-files=no"],
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 check=True,
             ).stdout.strip()
         )

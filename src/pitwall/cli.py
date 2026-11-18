@@ -8,6 +8,7 @@ and its --help can't drift apart, and CliRunner tests it without a subprocess.
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Annotated
@@ -38,6 +39,10 @@ def main() -> None:
     for stream in (sys.stdout, sys.stderr):
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(errors="replace")
+    # Commands Pitwall runs (Dyno, Gearbox's replay, pitwall itself in `retrain finish`)
+    # write UTF-8, and Pitwall reads them as UTF-8: a Windows code page in between
+    # crashed `retrain finish` on the first real run.
+    os.environ.setdefault("PYTHONIOENCODING", "utf-8")
     setup_logging(get_settings().log_level)
 
 
