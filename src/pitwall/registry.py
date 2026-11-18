@@ -54,15 +54,22 @@ def existing_version(c: Any, gguf_sha256: str) -> Any | None:
 
 
 def register(directory: Path) -> tuple[Any, bool]:
-    """(model version, created). Registering the same GGUF twice returns the first one."""
+    """(model version, created). Registering the same GGUF twice returns the first
+    version, with its metric tags refreshed from the newest evaluation run: the
+    promotion rule reads them, so they must be the latest measurement."""
     manifest = bundle_mod.load_manifest(directory)
     if manifest.gguf is None:
         raise RegistryError("bundle has no GGUF")
     c = client()
     found = existing_version(c, manifest.gguf.sha256)
-    if found is not None:
-        return found, False
     run = evaluation_run(c, manifest.gguf.sha256)
+    if found is not None:
+        for m in VERSION_METRICS:
+            if m in run.data.metrics:
+                value = f"{run.data.metrics[m]:.4f}"
+                c.set_model_version_tag(REGISTERED_MODEL, found.version, m, value)
+                found.tags[m] = value
+        return found, False
     c.log_artifacts(run.info.run_id, str(directory), "bundle")
     try:
         c.get_registered_model(REGISTERED_MODEL)

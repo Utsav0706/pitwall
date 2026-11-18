@@ -10,7 +10,7 @@ versions its data, trains it, tracks every run, gates it with
 One of four connected projects: [Scout](https://github.com/Utsav0706/scout) (research
 agent), Gearbox (LLM router), Dyno (agent evals) and Pitwall.
 
-**Status:** M10a, production failures become Dyno cases and training data. The retrain loop is next (M10b).
+**Status:** M10, the full loop runs: drift -> retrain -> gate -> canary -> promote, and rollback. Docs next (M11).
 
 ## Run
 
@@ -314,6 +314,41 @@ answered through Gearbox routed by Pitwall: 8/10 passed the quality judge, for
 **GBP 0.0058** (0.0034 answers + 0.0024 judging). Both failures were the new kind of
 prompt the drift check had flagged (a SimpleQA fact question and an MMLU-Pro question,
 routed to M and answered wrongly); importing them added 2 more cases and queue entries.
+
+## The loop, end to end
+
+```bash
+pitwall retrain prepare --train train_full        # check the data, print the Colab steps
+# Colab: notebooks/train_router_colab.ipynb with TRAIN = "train_full" (~5 min on a T4)
+pitwall retrain finish bundles/ft-train_full --yes
+#   bundle check -> evaluate -> register -> candidate -> gate (dry run)
+#   -> canary through Gearbox (PAID, capped) -> promote; stops at the first failure
+python scripts/loop_demo.py --bundle bundles/ft-train_full --yes   # all of it, for a recording
+```
+
+The first full run, after the drift above (production v1, trained on the general
+prompts only, seeing SimpleQA / AIME / MMLU-Pro traffic):
+
+| Step | Result |
+|---|---|
+| Retrain | v2 on `train_full` (481 prompts: the general ones + 116 newer hard ones), Colab T4, 256 s |
+| Evaluate (Q4, CPU) | accuracy 47.9%, under-routing 8.4%, pass 78.2%, all M, as v1; p95 259 ms |
+| Gate (dry run) | Dyno 48% -> 48%, under-routing 8.4% vs 8.4%, p95 within 600 ms: would promote |
+| Canary through Gearbox | 40 requests, GBP 0.0078; 5 (12%) to the candidate, now v2 |
+| Promote | v2 is production; the service picked it up within 30 s |
+| Same new traffic, drift check against v2's data | **no drift**: 1 of 3 features (embedding AUC 0.66, was 0.90 against v1's) |
+| Rollback | production back to v1, then promoted again through the gate |
+
+Every decision is an MLflow run: `always-M -> v1` (promoted), `v1 -> v2` (would
+promote, then promoted), `v2 -> v1` (rolled back), `v1 -> v2` (promoted).
+
+What it shows, honestly: v2 routes exactly like v1 (everything to M), so it was
+promoted for **tying** on every rule, not for routing better. What changed is that
+production now knows the new kind of prompt: the drift alert cleared because v2 was
+trained on it. The task mix still differs (this traffic is *only* hard prompts, v2's
+data is a quarter hard), which a single feature can't turn into an alert. v2's lower
+p95 (259 vs 488 ms) is the same model size and quantisation measured on a less busy
+machine, not a faster model.
 
 ## Build steps
 

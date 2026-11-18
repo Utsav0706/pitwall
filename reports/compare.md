@@ -19,6 +19,7 @@ judge. Latency is the routing decision alone (fine-tune: Ollama on CPU).
 | gearbox-v3-embed | reference | 46.2% | 8.4% | 45.4% | 78.2% | 0/117/2 | 38.2% | - |
 | lr-train_full | baseline | 46.2% | 8.4% | 45.4% | 78.2% | 0/117/2 | 38.2% | - |
 | lr-train_old | baseline | 51.3% | 8.4% | 40.3% | 78.2% | 4/115/0 | 41.2% | - |
+| ft-train_full | finetune | 47.9% | 8.4% | 43.7% | 78.2% | 0/119/0 | 41.2% | 76 / 259 ms |
 | ft-train_old | finetune | 47.9% | 8.4% | 43.7% | 78.2% | 0/119/0 | 41.2% | 108 / 488 ms |
 
 ## End to end (Gearbox's offline replay)
@@ -34,6 +35,7 @@ above, rounded by Gearbox first (e.g. 93/119 shows as 78.1% here, 78.2% above).
 | always-M | 94.7% | 78.1% | 6.0% | 94.0% | GBP 0.269 | 0/119/0 |
 | always-L | 100.0% | 84.0% | 100.0% | 0.0% | GBP 4.518 | 0/0/119 |
 | oracle | 98.4% | 85.7% | 13.2% | 86.8% | GBP 0.595 | 52/57/10 |
+| ft-train_full | 94.7% | 78.1% | 6.0% | 94.0% | GBP 0.269 | 0/119/0 |
 | ft-train_old | 94.7% | 78.1% | 6.0% | 94.0% | GBP 0.269 | 0/119/0 |
 | lr-train_full | 94.7% | 78.1% | 7.1% | 92.9% | GBP 0.319 | 0/117/2 |
 | lr-train_old | 94.7% | 78.1% | 5.9% | 94.1% | GBP 0.268 | 4/115/0 |

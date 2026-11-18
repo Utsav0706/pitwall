@@ -248,8 +248,13 @@ def test_register_needs_an_evaluation_run(tmp_path: Path, monkeypatch: pytest.Mo
         assert created and str(version.version) == "1"
         assert version.tags["gguf_sha256"] == sha
         assert version.tags["accuracy"] == "0.5000"
+        with mlflow.start_run(experiment_id=exp, run_name="ft-test again"):
+            mlflow.set_tags({"kind": "finetune", "gguf_sha256": sha})
+            mlflow.log_metrics({"accuracy": 0.5, "latency_p95_ms": 150.0})  # re-measured
         again, created_again = registry.register(directory)
         assert not created_again and str(again.version) == "1"  # same GGUF -> same version
+        stored = mlflow.MlflowClient().get_model_version(registry.REGISTERED_MODEL, "1")
+        assert stored.tags["latency_p95_ms"] == "150.0000"  # newest evaluation wins
         assert (tmp_path / "art").exists()
     finally:
         get_settings.cache_clear()
