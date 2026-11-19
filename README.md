@@ -9,7 +9,8 @@ versions its data, trains it, tracks every run, gates it with
 monitors it, detects drift, and retrains it.
 
 One of four connected projects: [Scout](https://github.com/Utsav0706/scout) (research
-agent), Gearbox (LLM router), Dyno (agent evals) and Pitwall.
+agent), Gearbox (LLM router), Dyno (agent evals) and Pitwall; they run together as one
+system in [uv-ai-stack](https://github.com/Utsav0706/uv-ai-stack).
 
 > **A fine-tuned Qwen3-0.6B router runs the whole loop (versioned data, Colab training,
 > MLflow registry, Dyno gate, canary through Gearbox, monitoring, drift, retraining,
